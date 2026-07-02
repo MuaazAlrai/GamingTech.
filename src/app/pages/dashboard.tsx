@@ -21,8 +21,6 @@ import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import {
   LineChart,
   Line,
-  BarChart,
-  Bar,
   PieChart,
   Pie,
   Cell,
@@ -33,42 +31,173 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
+import { usePersistentState } from "../hooks/use-persistent-state";
+import type { GpuItem } from "../types/gpu-item";
+import type { PosSale } from "../types/pos-sale";
+import type { RepairTicket } from "../types/repair-ticket";
 
-const revenueData = [
-  { name: "Jan", revenue: 0, repairs: 0 },
-  { name: "Feb", revenue: 0, repairs: 0 },
-  { name: "Mar", revenue: 0, repairs: 0 },
-  { name: "Apr", revenue: 0, repairs: 0 },
-  { name: "May", revenue: 0, repairs: 0 },
-  { name: "Jun", revenue: 0, repairs: 0 },
-];
+type Customer = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  totalRepairs: number;
+  totalSpent: number;
+};
 
-const repairStatusData = [
-  { name: "Diagnosing", value: 0, color: "#E6A23A" },
-  { name: "Repairing", value: 0, color: "#0F8B8D" },
-  { name: "Waiting Parts", value: 0, color: "#D94841" },
-  { name: "Testing", value: 0, color: "#F4A261" },
-  { name: "Ready", value: 0, color: "#2E9D64" },
-];
+type Part = {
+  id: string;
+  name: string;
+  category: string;
+  sku: string;
+  stock: number;
+  reorderLevel: number;
+  unit: string;
+  costPrice: number;
+  sellingPrice: number;
+  supplier: string;
+  location: string;
+};
 
-const recentActivities: {
-  id: number;
+type Activity = {
+  id: string;
   type: string;
   title: string;
   description: string;
   customer: string;
   time: string;
   avatar: string;
-}[] = [];
+  date: string;
+};
 
-const lowStockItems: { name: string; stock: number; reorderLevel: number; category: string }[] = [];
+const formatCurrency = (amount: number) =>
+  `₨${amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+
+const formatRelativeTime = (date: string) => {
+  const time = new Date(date).getTime();
+  if (Number.isNaN(time)) return "";
+
+  const minutes = Math.max(1, Math.round((Date.now() - time) / 60000));
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+
+  return `${Math.round(hours / 24)} days ago`;
+};
 
 export function Dashboard() {
+  const [tickets] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
+  const [sales] = usePersistentState<PosSale[]>("gamingtech.posSales", []);
+  const [customers] = usePersistentState<Customer[]>("gamingtech.customers", []);
+  const [parts] = usePersistentState<Part[]>("gamingtech.parts", []);
+  const [gpus] = usePersistentState<GpuItem[]>("gamingtech.gpus", []);
+
+  const today = new Date().toISOString().slice(0, 10);
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const todaysSales = sales.filter((sale) => sale.date.slice(0, 10) === today);
+  const todaysTickets = tickets.filter((ticket) => ticket.createdAt?.slice(0, 10) === today);
+  const activeTickets = tickets.filter((ticket) =>
+    ["received", "diagnosing", "repairing", "testing", "pending", "waiting_approval"].includes(
+      ticket.status,
+    ),
+  );
+  const waitingParts = tickets.filter((ticket) => ticket.status === "waiting_parts");
+  const readyTickets = tickets.filter((ticket) => ticket.status === "ready");
+  const todaysRevenue = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
+  const monthlyRevenue = sales
+    .filter((sale) => sale.date.slice(0, 7) === currentMonth)
+    .reduce((sum, sale) => sum + sale.total, 0);
+  const lowStockItems = parts
+    .filter((part) => part.stock <= part.reorderLevel)
+    .sort((a, b) => a.stock - b.stock);
+  const inventoryValue = parts.reduce((sum, part) => sum + part.stock * part.costPrice, 0);
+
+  const monthFormatter = new Intl.DateTimeFormat(undefined, { month: "short" });
+  const revenueData = Array.from({ length: 6 }, (_, index) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - (5 - index));
+    const monthKey = date.toISOString().slice(0, 7);
+
+    return {
+      name: monthFormatter.format(date),
+      revenue: sales
+        .filter((sale) => sale.date.slice(0, 7) === monthKey)
+        .reduce((sum, sale) => sum + sale.total, 0),
+      repairs: tickets.filter((ticket) => ticket.createdAt?.slice(0, 7) === monthKey).length,
+    };
+  });
+
+  const repairStatusData = [
+    {
+      name: "Diagnosing",
+      value: tickets.filter((ticket) => ticket.status === "diagnosing").length,
+      color: "#E6A23A",
+    },
+    {
+      name: "Repairing",
+      value: tickets.filter((ticket) => ticket.status === "repairing").length,
+      color: "#0F8B8D",
+    },
+    { name: "Waiting Parts", value: waitingParts.length, color: "#D94841" },
+    {
+      name: "Testing",
+      value: tickets.filter((ticket) => ticket.status === "testing").length,
+      color: "#F4A261",
+    },
+    { name: "Ready", value: readyTickets.length, color: "#2E9D64" },
+  ];
+
+  const recentActivities: Activity[] = [
+    ...sales.map((sale) => ({
+      id: sale.id,
+      type: "sale",
+      title: "POS sale completed",
+      description: `${sale.items.length} item types sold for ${formatCurrency(sale.total)}`,
+      customer: "POS",
+      time: formatRelativeTime(sale.date),
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${sale.id}`,
+      date: sale.date,
+    })),
+    ...tickets.map((ticket) => ({
+      id: ticket.id,
+      type: "repair",
+      title: ticket.issue || "Repair ticket created",
+      description: `${ticket.device} - ${ticket.status}`,
+      customer: ticket.customer,
+      time: formatRelativeTime(ticket.createdAt),
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${ticket.customer}`,
+      date: ticket.createdAt,
+    })),
+    ...gpus.map((gpu) => ({
+      id: gpu.id,
+      type: "gpu",
+      title: "GPU inventory updated",
+      description: `${gpu.model} - ${gpu.status}`,
+      customer: gpu.customer,
+      time: formatRelativeTime(gpu.updatedAt ?? gpu.createdAt ?? new Date().toISOString()),
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${gpu.customer}`,
+      date: gpu.updatedAt ?? gpu.createdAt ?? new Date().toISOString(),
+    })),
+    ...parts.map((part) => ({
+      id: part.id,
+      type: "stock",
+      title: "Stock available",
+      description: `${part.name} - ${part.stock} ${part.unit}`,
+      customer: part.category,
+      time: "Inventory",
+      avatar: `https://api.dicebear.com/7.x/shapes/svg?seed=${part.id}`,
+      date: new Date(0).toISOString(),
+    })),
+  ]
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 6);
+
   const stats = [
     {
       title: "Today's Repairs",
-      value: "0",
-      change: "0%",
+      value: String(todaysTickets.length),
+      change: `${tickets.length} total`,
       trend: "up",
       icon: Wrench,
       color: "text-primary",
@@ -76,8 +205,8 @@ export function Dashboard() {
     },
     {
       title: "Active Repairs",
-      value: "0",
-      change: "0%",
+      value: String(activeTickets.length),
+      change: `${tickets.length} total`,
       trend: "up",
       icon: Clock,
       color: "text-warning",
@@ -85,8 +214,8 @@ export function Dashboard() {
     },
     {
       title: "Waiting for Parts",
-      value: "0",
-      change: "0%",
+      value: String(waitingParts.length),
+      change: `${parts.length} stock items`,
       trend: "down",
       icon: Package,
       color: "text-destructive",
@@ -94,8 +223,8 @@ export function Dashboard() {
     },
     {
       title: "Ready for Pickup",
-      value: "0",
-      change: "0%",
+      value: String(readyTickets.length),
+      change: "ready",
       trend: "up",
       icon: CheckCircle2,
       color: "text-success",
@@ -103,8 +232,8 @@ export function Dashboard() {
     },
     {
       title: "Today's Revenue",
-      value: "₨0",
-      change: "0%",
+      value: formatCurrency(todaysRevenue),
+      change: `${todaysSales.length} sales`,
       trend: "up",
       icon: DollarSign,
       color: "text-success",
@@ -112,8 +241,8 @@ export function Dashboard() {
     },
     {
       title: "Monthly Revenue",
-      value: "₨0",
-      change: "0%",
+      value: formatCurrency(monthlyRevenue),
+      change: `Stock ${formatCurrency(inventoryValue)}`,
       trend: "up",
       icon: TrendingUp,
       color: "text-accent",
@@ -121,8 +250,8 @@ export function Dashboard() {
     },
     {
       title: "Total Customers",
-      value: "0",
-      change: "0",
+      value: String(customers.length),
+      change: `${gpus.length} GPUs`,
       trend: "up",
       icon: Users,
       color: "text-primary",
@@ -130,8 +259,8 @@ export function Dashboard() {
     },
     {
       title: "Low Stock Items",
-      value: "0",
-      change: "0",
+      value: String(lowStockItems.length),
+      change: `${parts.length} items`,
       trend: "alert",
       icon: AlertTriangle,
       color: "text-warning",
@@ -306,9 +435,9 @@ export function Dashboard() {
                     variant={
                       activity.type === "repair"
                         ? "default"
-                        : activity.type === "payment"
+                        : activity.type === "payment" || activity.type === "sale" || activity.type === "stock"
                         ? "secondary"
-                        : activity.type === "delivery"
+                        : activity.type === "delivery" || activity.type === "gpu"
                         ? "outline"
                         : "destructive"
                     }
@@ -346,7 +475,7 @@ export function Dashboard() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-medium text-destructive">
-                        {item.stock} units
+                        {item.stock} {item.unit}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         Min: {item.reorderLevel}
@@ -360,10 +489,6 @@ export function Dashboard() {
                 </div>
               ))}
             </div>
-            <Button className="w-full mt-4" variant="outline">
-              <Package className="mr-2 h-4 w-4" />
-              Create Purchase Order
-            </Button>
           </CardContent>
         </Card>
       </div>

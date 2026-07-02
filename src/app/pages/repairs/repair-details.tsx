@@ -7,7 +7,6 @@ import {
   DollarSign,
   MessageSquare,
   Printer,
-  Download,
   CheckCircle,
   Edit,
 } from "lucide-react";
@@ -108,9 +107,6 @@ export function RepairDetails() {
         <div className="flex gap-2">
           <Button variant="outline" size="icon">
             <Printer className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon">
-            <Download className="h-4 w-4" />
           </Button>
           <Button variant="outline" className="gap-2">
             <Edit className="h-4 w-4" />

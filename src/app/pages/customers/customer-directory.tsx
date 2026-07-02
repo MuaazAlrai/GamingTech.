@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { Search, Plus, Download, Mail, Phone, Pencil, Trash2 } from "lucide-react";
+import { Search, Plus, Mail, Phone, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -21,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
+import { usePersistentState } from "../../hooks/use-persistent-state";
 
 type Customer = {
   id: string;
@@ -35,7 +36,10 @@ const initialCustomers: Customer[] = [];
 
 export function CustomerDirectory() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
+  const [customers, setCustomers] = usePersistentState<Customer[]>(
+    "gamingtech.customers",
+    initialCustomers,
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [formData, setFormData] = useState({
@@ -117,10 +121,6 @@ export function CustomerDirectory() {
           <p className="text-muted-foreground mt-1">Manage all customer information</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
           <Button className="gap-2" onClick={openAddDialog}>
             <Plus className="h-4 w-4" />
             Add Customer

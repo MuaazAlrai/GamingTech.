@@ -10,10 +10,15 @@ import { RepairDetails } from "./pages/repairs/repair-details";
 import { PartsInventory } from "./pages/parts/parts-inventory";
 import { PartDetails } from "./pages/parts/part-details";
 import { InventoryDashboard } from "./pages/inventory/inventory-dashboard";
+import { GpuGallery } from "./pages/inventory/gpu-gallery";
+import { GpuStatusBoard } from "./pages/inventory/gpu-status-board";
+import { GpuTimeline } from "./pages/inventory/gpu-timeline";
 import { CustomerDirectory } from "./pages/customers/customer-directory";
 import { CustomerProfile } from "./pages/customers/customer-profile";
 import { POSDashboard } from "./pages/pos/pos-dashboard";
 import { NewSale } from "./pages/pos/new-sale";
+import { SalesHistory } from "./pages/pos/sales-history";
+import { SalesReport } from "./pages/pos/sales-report";
 import { BillingDashboard } from "./pages/billing/billing-dashboard";
 import { FinanceDashboard } from "./pages/finance/finance-dashboard";
 import { Reports } from "./pages/reports/reports";
@@ -67,6 +72,18 @@ export const router = createBrowserRouter([
         Component: InventoryDashboard,
       },
       {
+        path: "inventory/status-board",
+        Component: GpuStatusBoard,
+      },
+      {
+        path: "inventory/timeline",
+        Component: GpuTimeline,
+      },
+      {
+        path: "inventory/gallery",
+        Component: GpuGallery,
+      },
+      {
         path: "customers",
         Component: CustomerDirectory,
       },
@@ -81,6 +98,14 @@ export const router = createBrowserRouter([
       {
         path: "pos/new-sale",
         Component: NewSale,
+      },
+      {
+        path: "pos/sales-history",
+        Component: SalesHistory,
+      },
+      {
+        path: "pos/reports",
+        Component: SalesReport,
       },
       {
         path: "billing",

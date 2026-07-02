@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { Plus, Search, Filter, Download, RefreshCw } from "lucide-react";
+import { Plus, Search, Filter, RefreshCw } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Badge } from "../../components/ui/badge";
@@ -179,10 +179,6 @@ export function RepairTickets() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Download className="h-4 w-4 mr-2" />
-            Export
-          </Button>
           <Link to="/repairs/create">
             <Button size="sm">
               <Plus className="h-4 w-4 mr-2" />

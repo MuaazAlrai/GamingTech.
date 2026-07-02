@@ -6,31 +6,56 @@ import { Input } from "../../components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Separator } from "../../components/ui/separator";
 import { toast } from "sonner";
+import { usePersistentState } from "../../hooks/use-persistent-state";
+import type { PosSale, PosSaleItem } from "../../types/pos-sale";
 
-const products: { id: number; name: string; price: number; stock: number }[] = [];
+type InventoryProduct = {
+  id: string;
+  name: string;
+  sellingPrice: number;
+  stock: number;
+};
 
 export function NewSale() {
   const navigate = useNavigate();
-  const [cart, setCart] = useState<Array<{ id: number; name: string; price: number; quantity: number }>>([]);
+  const [cart, setCart] = useState<PosSaleItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [products, setProducts] = usePersistentState<InventoryProduct[]>("gamingtech.parts", []);
+  const [sales, setSales] = usePersistentState<PosSale[]>("gamingtech.posSales", []);
 
-  const addToCart = (product: typeof products[0]) => {
+  const addToCart = (product: InventoryProduct) => {
+    if (product.stock < 1) {
+      toast.error("This product is out of stock.");
+      return;
+    }
+
     const existing = cart.find((item) => item.id === product.id);
     if (existing) {
+      if (existing.quantity >= product.stock) {
+        toast.error("Not enough stock available.");
+        return;
+      }
+
       setCart(cart.map((item) =>
         item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
       ));
     } else {
-      setCart([...cart, { ...product, quantity: 1 }]);
+      setCart([...cart, { id: product.id, name: product.name, price: product.sellingPrice, quantity: 1 }]);
     }
   };
 
-  const removeFromCart = (id: number) => {
+  const removeFromCart = (id: string) => {
     setCart(cart.filter((item) => item.id !== id));
   };
 
-  const updateQuantity = (id: number, quantity: number) => {
+  const updateQuantity = (id: string, quantity: number) => {
     if (quantity < 1) return;
+    const product = products.find((item) => item.id === id);
+    if (product && quantity > product.stock) {
+      toast.error("Not enough stock available.");
+      return;
+    }
+
     setCart(cart.map((item) => (item.id === id ? { ...item, quantity } : item)));
   };
 
@@ -39,6 +64,28 @@ export function NewSale() {
   const total = subtotal + tax;
 
   const handleCheckout = () => {
+    if (cart.length === 0) {
+      toast.error("Cart is empty.");
+      return;
+    }
+
+    const sale: PosSale = {
+      id: `SALE-${String(sales.length + 1).padStart(4, "0")}`,
+      date: new Date().toISOString(),
+      items: cart,
+      subtotal,
+      tax,
+      total,
+      paymentMethod: "Cash",
+    };
+
+    setSales((current) => [sale, ...current]);
+    setProducts((current) =>
+      current.map((product) => {
+        const soldItem = cart.find((item) => item.id === product.id);
+        return soldItem ? { ...product, stock: product.stock - soldItem.quantity } : product;
+      }),
+    );
     toast.success("Sale completed successfully!");
     navigate("/pos");
   };
@@ -89,7 +136,7 @@ export function NewSale() {
                       <CardContent className="p-4">
                         <h3 className="font-medium">{product.name}</h3>
                         <div className="flex items-center justify-between mt-2">
-                          <span className="text-lg font-bold">₨{product.price.toLocaleString()}</span>
+                          <span className="text-lg font-bold">₨{product.sellingPrice.toLocaleString()}</span>
                           <span className="text-sm text-muted-foreground">Stock: {product.stock}</span>
                         </div>
                       </CardContent>

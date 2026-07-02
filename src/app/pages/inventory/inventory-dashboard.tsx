@@ -21,19 +21,13 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-
-type GpuItem = {
-  id: string;
-  model: string;
-  status: string;
-  customer: string;
-  serial: string;
-};
+import { usePersistentState } from "../../hooks/use-persistent-state";
+import type { GpuItem } from "../../types/gpu-item";
 
 const initialGpus: GpuItem[] = [];
 
 export function InventoryDashboard() {
-  const [gpus, setGpus] = useState<GpuItem[]>(initialGpus);
+  const [gpus, setGpus] = usePersistentState<GpuItem[]>("gamingtech.gpus", initialGpus);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGpu, setEditingGpu] = useState<GpuItem | null>(null);
   const [formData, setFormData] = useState({
@@ -62,9 +56,39 @@ export function InventoryDashboard() {
 
   const saveGpu = (event: React.FormEvent) => {
     event.preventDefault();
+    const now = new Date().toISOString();
+    const statusChanged = Boolean(editingGpu && editingGpu.status !== formData.status);
     const nextGpu: GpuItem = {
       id: editingGpu?.id ?? `GPU-${String(gpus.length + 1).padStart(3, "0")}`,
       ...formData,
+      createdAt: editingGpu?.createdAt ?? now,
+      updatedAt: now,
+      history: [
+        ...(editingGpu?.history ?? [
+          {
+            date: editingGpu?.createdAt ?? now,
+            status: editingGpu?.status ?? formData.status,
+            note: editingGpu ? "GPU record created" : "GPU added to inventory",
+          },
+        ]),
+        ...(statusChanged
+          ? [
+              {
+                date: now,
+                status: formData.status,
+                note: `Status changed from ${editingGpu?.status} to ${formData.status}`,
+              },
+            ]
+          : editingGpu
+            ? [
+                {
+                  date: now,
+                  status: formData.status,
+                  note: "GPU record updated",
+                },
+              ]
+            : []),
+      ],
     };
 
     setGpus((current) =>
@@ -161,27 +185,33 @@ export function InventoryDashboard() {
                 </CardContent>
               </Card>
             </Link>
-            <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
-              <CardContent className="p-6 text-center">
-                <LayoutGrid className="h-8 w-8 mx-auto text-success mb-2" />
-                <h3 className="font-medium">Status Board</h3>
-                <p className="text-xs text-muted-foreground mt-1">Group GPUs by status</p>
-              </CardContent>
-            </Card>
-            <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
-              <CardContent className="p-6 text-center">
-                <CalendarDays className="h-8 w-8 mx-auto text-warning mb-2" />
-                <h3 className="font-medium">Timeline</h3>
-                <p className="text-xs text-muted-foreground mt-1">Track GPU history</p>
-              </CardContent>
-            </Card>
-            <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
-              <CardContent className="p-6 text-center">
-                <Images className="h-8 w-8 mx-auto text-accent mb-2" />
-                <h3 className="font-medium">Customer Gallery</h3>
-                <p className="text-xs text-muted-foreground mt-1">View customer GPU media</p>
-              </CardContent>
-            </Card>
+            <Link to="/inventory/status-board">
+              <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                <CardContent className="p-6 text-center">
+                  <LayoutGrid className="h-8 w-8 mx-auto text-success mb-2" />
+                  <h3 className="font-medium">Status Board</h3>
+                  <p className="text-xs text-muted-foreground mt-1">Group GPUs by status</p>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link to="/inventory/timeline">
+              <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                <CardContent className="p-6 text-center">
+                  <CalendarDays className="h-8 w-8 mx-auto text-warning mb-2" />
+                  <h3 className="font-medium">Timeline</h3>
+                  <p className="text-xs text-muted-foreground mt-1">Track GPU history</p>
+                </CardContent>
+              </Card>
+            </Link>
+            <Link to="/inventory/gallery">
+              <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
+                <CardContent className="p-6 text-center">
+                  <Images className="h-8 w-8 mx-auto text-accent mb-2" />
+                  <h3 className="font-medium">Customer Gallery</h3>
+                  <p className="text-xs text-muted-foreground mt-1">View customer GPU media</p>
+                </CardContent>
+              </Card>
+            </Link>
           </div>
         </CardContent>
       </Card>

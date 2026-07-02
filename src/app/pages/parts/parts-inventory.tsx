@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { Search, Plus, Download, AlertTriangle, Package, TrendingUp, Pencil, Trash2 } from "lucide-react";
+import { Search, Plus, AlertTriangle, Package, TrendingUp, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -29,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "../../components/ui/dialog";
+import { usePersistentState } from "../../hooks/use-persistent-state";
 
 type Part = {
   id: string;
@@ -49,7 +50,7 @@ const initialParts: Part[] = [];
 export function PartsInventory() {
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [parts, setParts] = useState<Part[]>(initialParts);
+  const [parts, setParts] = usePersistentState<Part[]>("gamingtech.parts", initialParts);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<Part | null>(null);
   const [formData, setFormData] = useState({
@@ -148,10 +149,6 @@ export function PartsInventory() {
           <p className="text-muted-foreground mt-1">Manage parts and stock levels</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" className="gap-2">
-            <Download className="h-4 w-4" />
-            Export
-          </Button>
           <Button className="gap-2" onClick={openAddDialog}>
             <Plus className="h-4 w-4" />
             Add New Part

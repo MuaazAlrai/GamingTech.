@@ -5,7 +5,6 @@ import {
   Filter,
   Plus,
   Eye,
-  Download,
   MoreVertical,
   Clock,
   AlertCircle,
@@ -40,21 +39,8 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
-
-const tickets: {
-  id: string;
-  repairId: string;
-  openStatus: string;
-  customer: string;
-  device: string;
-  issue: string;
-  status: string;
-  priority: string;
-  technician: string;
-  createdAt: string;
-  estimatedCompletion: string;
-  amount: number;
-}[] = [];
+import { usePersistentState } from "../../hooks/use-persistent-state";
+import type { RepairTicket } from "../../types/repair-ticket";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
   received: { label: "Received", variant: "secondary", icon: Clock },
@@ -82,6 +68,13 @@ export function RepairTickets() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [priorityFilter, setPriorityFilter] = useState("all");
+  const [tickets] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
+
+  const inProgressCount = tickets.filter((ticket) =>
+    ["received", "diagnosing", "repairing", "testing", "pending"].includes(ticket.status),
+  ).length;
+  const readyCount = tickets.filter((ticket) => ticket.status === "ready").length;
+  const waitingPartsCount = tickets.filter((ticket) => ticket.status === "waiting_parts").length;
 
   const filteredTickets = tickets.filter((ticket) => {
     const matchesSearch =
@@ -116,7 +109,7 @@ export function RepairTickets() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total</p>
-                <h3 className="text-2xl font-bold mt-1">0</h3>
+                <h3 className="text-2xl font-bold mt-1">{tickets.length}</h3>
               </div>
               <div className="bg-primary/10 text-primary p-3 rounded-lg">
                 <AlertCircle className="h-5 w-5" />
@@ -129,7 +122,7 @@ export function RepairTickets() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">In Progress</p>
-                <h3 className="text-2xl font-bold mt-1">0</h3>
+                <h3 className="text-2xl font-bold mt-1">{inProgressCount}</h3>
               </div>
               <div className="bg-warning/10 text-warning p-3 rounded-lg">
                 <Clock className="h-5 w-5" />
@@ -142,7 +135,7 @@ export function RepairTickets() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Ready</p>
-                <h3 className="text-2xl font-bold mt-1">0</h3>
+                <h3 className="text-2xl font-bold mt-1">{readyCount}</h3>
               </div>
               <div className="bg-success/10 text-success p-3 rounded-lg">
                 <CheckCircle2 className="h-5 w-5" />
@@ -155,7 +148,7 @@ export function RepairTickets() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Waiting Parts</p>
-                <h3 className="text-2xl font-bold mt-1">0</h3>
+                <h3 className="text-2xl font-bold mt-1">{waitingPartsCount}</h3>
               </div>
               <div className="bg-destructive/10 text-destructive p-3 rounded-lg">
                 <XCircle className="h-5 w-5" />
@@ -212,10 +205,6 @@ export function RepairTickets() {
                 <SelectItem value="high">High</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" className="gap-2">
-              <Download className="h-4 w-4" />
-              Export
-            </Button>
           </div>
 
           {/* Table */}
