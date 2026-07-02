@@ -45,11 +45,11 @@ export function Login() {
 
         <form onSubmit={handleLogin} className="space-y-5">
           <div className="space-y-2">
-            <Label htmlFor="email">Gmail / Email</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
               id="email"
               type="email"
-              placeholder="admin@gamingtech.pk"
+              placeholder="Add email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required
@@ -95,10 +95,8 @@ export function Login() {
         </form>
 
         <p className="text-center text-sm text-muted-foreground">
-          Don't have an account?{" "}
-          <Link to="/register" className="font-medium text-primary hover:underline">
-            Register
-          </Link>
+          New employee?{" "}
+          <Link to="/register" className="font-medium text-primary hover:underline">Create account</Link>
         </p>
       </div>
     </div>

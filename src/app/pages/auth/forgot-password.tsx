@@ -38,7 +38,7 @@ export function ForgotPassword() {
           <div className="text-center">
             <h1 className="text-2xl font-bold">Forgot Password?</h1>
             <p className="text-sm text-muted-foreground mt-2">
-              Enter your admin email and we'll send reset instructions
+              Enter your account email and we'll send reset instructions
             </p>
           </div>
         </div>
@@ -65,7 +65,7 @@ export function ForgotPassword() {
             <Input
               id="email"
               type="email"
-              placeholder="admin@gamingtech.pk"
+              placeholder="Add email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -86,12 +86,6 @@ export function ForgotPassword() {
           Back to Login
         </Link>
 
-        <p className="text-center text-sm text-muted-foreground">
-          Need a new admin account?{" "}
-          <Link to="/register" className="font-medium text-primary hover:underline">
-            Register
-          </Link>
-        </p>
       </div>
     </div>
   );

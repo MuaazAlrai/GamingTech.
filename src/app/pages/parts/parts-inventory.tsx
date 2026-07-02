@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Link } from "react-router";
-import { Search, Plus, AlertTriangle, Package, TrendingUp, Pencil, Trash2 } from "lucide-react";
+import { Link, useSearchParams } from "react-router";
+import { Search, Plus, AlertTriangle, Package, TrendingUp, Pencil, Trash2, RotateCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -48,6 +48,7 @@ type Part = {
 const initialParts: Part[] = [];
 
 export function PartsInventory() {
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [parts, setParts] = usePersistentState<Part[]>("gamingtech.parts", initialParts);
@@ -128,12 +129,20 @@ export function PartsInventory() {
     setParts((current) => current.filter((part) => part.id !== id));
   };
 
+  const reorderPart = (part: Part) => {
+    const suggested = Math.max(part.reorderLevel * 2 - part.stock, 1);
+    const quantity = Number(window.prompt(`How many ${part.unit} of ${part.name} were received?`, String(suggested)));
+    if (!Number.isFinite(quantity) || quantity <= 0) return;
+    setParts((current) => current.map((item) => item.id === part.id ? { ...item, stock: item.stock + quantity } : item));
+  };
+
   const filteredParts = parts.filter((part) => {
     const matchesSearch =
       part.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       part.sku.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesCategory = categoryFilter === "all" || part.category === categoryFilter;
-    return matchesSearch && matchesCategory;
+    const matchesView = searchParams.get("view") === "low" ? part.stock <= part.reorderLevel : true;
+    return matchesSearch && matchesCategory && matchesView;
   });
 
   const totalValue = parts.reduce((sum, part) => sum + part.stock * part.costPrice, 0);
@@ -236,6 +245,7 @@ export function PartsInventory() {
                 <SelectItem value="all">All Categories</SelectItem>
                 <SelectItem value="Mobile Parts">Mobile Parts</SelectItem>
                 <SelectItem value="Gaming Parts">Gaming Parts</SelectItem>
+                <SelectItem value="GPU">GPU</SelectItem>
                 <SelectItem value="Laptop Parts">Laptop Parts</SelectItem>
                 <SelectItem value="PC Parts">PC Parts</SelectItem>
                 <SelectItem value="Accessories">Accessories</SelectItem>
@@ -309,6 +319,9 @@ export function PartsInventory() {
                             View Details
                             </Button>
                           </Link>
+                          <Button variant={isLowStock ? "default" : "outline"} size="sm" onClick={() => reorderPart(part)}>
+                            <RotateCcw className="mr-2 h-4 w-4" /> Reorder
+                          </Button>
                           <Button variant="outline" size="sm" onClick={() => openEditDialog(part)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
@@ -346,7 +359,7 @@ export function PartsInventory() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="partCategory">Category</Label>
-                <Input id="partCategory" value={formData.category} onChange={(event) => setFormData({ ...formData, category: event.target.value })} required />
+                <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}><SelectTrigger id="partCategory"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="GPU">GPU</SelectItem><SelectItem value="Gaming Parts">Gaming Parts</SelectItem><SelectItem value="PC Parts">PC Parts</SelectItem><SelectItem value="Laptop Parts">Laptop Parts</SelectItem><SelectItem value="Mobile Parts">Mobile Parts</SelectItem><SelectItem value="Accessories">Accessories</SelectItem><SelectItem value="POS Products">POS Products</SelectItem></SelectContent></Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="partSupplier">Supplier</Label>

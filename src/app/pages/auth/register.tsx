@@ -58,11 +58,11 @@ export function Register() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Gmail / Email</Label>
+            <Label htmlFor="email">Email</Label>
             <Input
               id="email"
               type="email"
-              placeholder="admin@gamingtech.pk"
+              placeholder="Add email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               required

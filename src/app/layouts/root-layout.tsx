@@ -16,10 +16,12 @@ import {
   Boxes,
   PanelLeftClose,
   PanelLeftOpen,
+  UserRound,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../components/ui/utils";
 import { auth } from "../../firebase";
+import { useAuth } from "../auth/auth-context";
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -29,10 +31,13 @@ const navigation = [
   { name: "Customers", href: "/customers", icon: Users },
   { name: "POS", href: "/pos", icon: ShoppingCart },
   { name: "Billing", href: "/billing", icon: FileText },
+  { name: "Reports", href: "/reports", icon: FileText },
   { name: "Finance", href: "/finance", icon: TrendingUp },
+  { name: "Profile & Password", href: "/profile", icon: UserRound },
 ];
 
 export function RootLayout() {
+  const { isAdmin, role, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -96,7 +101,9 @@ export function RootLayout() {
             {!sidebarCollapsed && (
             <div className="flex min-w-0 flex-col">
               <img src="/gamingtech-logo.svg" alt="GamingTech.pk" className="h-10 w-36 rounded-md object-cover" />
-              <span className="mt-1 text-xs text-sidebar-foreground/70">Admin Panel</span>
+              <span className="mt-1 text-xs text-sidebar-foreground/70">
+                {isAdmin ? "Admin Panel" : "Employee Panel"}
+              </span>
             </div>
             )}
             <Button
@@ -112,7 +119,7 @@ export function RootLayout() {
           {/* Navigation */}
           <nav className="flex-1 overflow-y-auto py-6 px-3">
             <div className="space-y-1">
-              {navigation.map((item) => {
+              {(isAdmin ? navigation : navigation.filter((item) => ["Dashboard", "Repairing", "Parts", "GPU Inventory", "Customers", "Profile & Password"].includes(item.name))).map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.href);
                 return (
@@ -157,6 +164,15 @@ export function RootLayout() {
             </h1>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => navigate("/profile")}
+              className="hidden xl:block text-right hover:text-primary"
+              title="Open profile and change password"
+            >
+              <p className="text-sm font-medium">{user?.displayName || user?.email}</p>
+              <p className="text-xs capitalize text-muted-foreground">{role}</p>
+            </button>
             <Button variant="outline" className="gap-2" onClick={handleLogout}>
                 <LogOut className="h-4 w-4" />
                 Logout
@@ -166,8 +182,8 @@ export function RootLayout() {
       </header>
 
       {/* Main Content */}
-      <main className={cn(sidebarCollapsed ? "lg:ml-20" : "lg:ml-64", isMobile ? "pt-16" : "lg:pt-16")}>
-        <div className="p-4 lg:p-6">
+      <main className={cn("min-w-0 max-w-full overflow-x-hidden", sidebarCollapsed ? "lg:ml-20" : "lg:ml-64", isMobile ? "pt-16" : "lg:pt-16")}>
+        <div className="min-w-0 max-w-full p-4 lg:p-6">
           <Outlet />
         </div>
       </main>
@@ -175,13 +191,19 @@ export function RootLayout() {
       {/* Mobile Bottom Navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border">
         <div className="flex items-center justify-around px-2 py-2">
-          {[
+          {(isAdmin ? [
             { name: "Dashboard", href: "/", icon: LayoutDashboard },
             { name: "Repairing", href: "/repairs", icon: Wrench },
             { name: "GPU", href: "/inventory", icon: Boxes },
             { name: "POS", href: "/pos", icon: ShoppingCart },
-            { name: "More", href: "/settings", icon: Settings },
-          ].map((item) => {
+            { name: "Profile", href: "/profile", icon: Settings },
+          ] : [
+            { name: "Dashboard", href: "/", icon: LayoutDashboard },
+            { name: "Repairing", href: "/repairs", icon: Wrench },
+            { name: "GPU", href: "/inventory", icon: Boxes },
+            { name: "Customers", href: "/customers", icon: Users },
+            { name: "Profile", href: "/profile", icon: Settings },
+          ]).map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
             return (

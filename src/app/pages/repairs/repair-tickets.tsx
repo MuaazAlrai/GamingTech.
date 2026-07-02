@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import {
   Search,
   Filter,
@@ -10,6 +10,9 @@ import {
   AlertCircle,
   CheckCircle2,
   XCircle,
+  Printer,
+  Pencil,
+  Trash2,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
@@ -41,6 +44,11 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { RepairTicket } from "../../types/repair-ticket";
+import { printRepairLabel } from "../../utils/print-repair-label";
+import { toast } from "sonner";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Label } from "../../components/ui/label";
+import { useAuth } from "../../auth/auth-context";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
   received: { label: "Received", variant: "secondary", icon: Clock },
@@ -65,10 +73,33 @@ const priorityColors: Record<string, string> = {
 };
 
 export function RepairTickets() {
+  const { isAdmin } = useAuth();
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "all");
   const [priorityFilter, setPriorityFilter] = useState("all");
-  const [tickets] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
+  const [tickets, setTickets] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
+  const [editingTicket, setEditingTicket] = useState<RepairTicket | null>(null);
+  const [editForm, setEditForm] = useState({ customer: "", device: "", issue: "", status: "received", priority: "medium", estimatedCompletion: "", amount: "0" });
+
+  const openEdit = (ticket: RepairTicket) => {
+    setEditingTicket(ticket);
+    setEditForm({ customer: ticket.customer, device: ticket.device, issue: ticket.issue, status: ticket.status, priority: ticket.priority, estimatedCompletion: ticket.estimatedCompletion, amount: String(ticket.amount) });
+  };
+
+  const saveEdit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingTicket) return;
+    setTickets((current) => current.map((ticket) => ticket.id === editingTicket.id ? { ...ticket, ...editForm, amount: Number(editForm.amount) } : ticket));
+    setEditingTicket(null);
+    toast.success("Repair ticket updated.");
+  };
+
+  const deleteTicket = (ticket: RepairTicket) => {
+    if (!window.confirm(`Delete ${ticket.id} permanently?`)) return;
+    setTickets((current) => current.filter((item) => item.id !== ticket.id));
+    toast.success("Repair ticket deleted.");
+  };
 
   const inProgressCount = tickets.filter((ticket) =>
     ["received", "diagnosing", "repairing", "testing", "pending"].includes(ticket.status),
@@ -83,7 +114,13 @@ export function RepairTickets() {
       ticket.device.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
     const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
-    return matchesSearch && matchesStatus && matchesPriority;
+    const view = searchParams.get("view");
+    const matchesView = view === "today"
+      ? ticket.createdAt?.slice(0, 10) === new Date().toISOString().slice(0, 10)
+      : view === "active"
+        ? ["received", "diagnosing", "repairing", "testing", "pending", "waiting_approval"].includes(ticket.status)
+        : true;
+    return matchesSearch && matchesStatus && matchesPriority && matchesView;
   });
 
   return (
@@ -274,29 +311,12 @@ export function RepairTickets() {
                         <TableCell>{ticket.estimatedCompletion}</TableCell>
                         <TableCell>₨{ticket.amount.toLocaleString()}</TableCell>
                         <TableCell className="text-right">
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon">
-                                <MoreVertical className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem asChild>
-                                <Link to={`/repairs/${ticket.id}`}>
-                                  <Eye className="mr-2 h-4 w-4" />
-                                  View Details
-                                </Link>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem>Edit Ticket</DropdownMenuItem>
-                              <DropdownMenuItem>Print Invoice</DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem className="text-destructive">
-                                Cancel Repair
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
+                          <div className="flex justify-end gap-1">
+                            <Link to={`/repairs/${ticket.id}`}><Button variant="ghost" size="icon" title="View"><Eye className="h-4 w-4" /></Button></Link>
+                            {isAdmin && <Button variant="outline" size="icon" title="Edit" onClick={() => openEdit(ticket)}><Pencil className="h-4 w-4" /></Button>}
+                            <Button variant="outline" size="icon" title="Print label" onClick={() => { if (!printRepairLabel(ticket)) toast.error("Allow pop-ups to print the device label."); }}><Printer className="h-4 w-4" /></Button>
+                            {isAdmin && <Button variant="destructive" size="icon" title="Delete" onClick={() => deleteTicket(ticket)}><Trash2 className="h-4 w-4" /></Button>}
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -307,6 +327,7 @@ export function RepairTickets() {
           </div>
         </CardContent>
       </Card>
+      <Dialog open={Boolean(editingTicket)} onOpenChange={(open) => !open && setEditingTicket(null)}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Edit Repair Ticket {editingTicket?.id}</DialogTitle></DialogHeader><form onSubmit={saveEdit} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Customer</Label><Input value={editForm.customer} onChange={(e) => setEditForm({ ...editForm, customer: e.target.value })} required /></div><div className="space-y-2"><Label>Device</Label><Input value={editForm.device} onChange={(e) => setEditForm({ ...editForm, device: e.target.value })} required /></div><div className="space-y-2 md:col-span-2"><Label>Issue</Label><Input value={editForm.issue} onChange={(e) => setEditForm({ ...editForm, issue: e.target.value })} required /></div><div className="space-y-2"><Label>Status</Label><Select value={editForm.status} onValueChange={(status) => setEditForm({ ...editForm, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(statusConfig).map(([value, item]) => <SelectItem key={value} value={value}>{item.label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Priority</Label><Select value={editForm.priority} onValueChange={(priority) => setEditForm({ ...editForm, priority })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem><SelectItem value="urgent">Urgent</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Estimated Completion</Label><Input type="date" value={editForm.estimatedCompletion} onChange={(e) => setEditForm({ ...editForm, estimatedCompletion: e.target.value })} /></div><div className="space-y-2"><Label>Amount</Label><Input type="number" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setEditingTicket(null)}>Cancel</Button><Button type="submit">Save Changes</Button></DialogFooter></form></DialogContent></Dialog>
     </div>
   );
 }

@@ -35,6 +35,7 @@ import { usePersistentState } from "../hooks/use-persistent-state";
 import type { GpuItem } from "../types/gpu-item";
 import type { PosSale } from "../types/pos-sale";
 import type { RepairTicket } from "../types/repair-ticket";
+import { useAuth } from "../auth/auth-context";
 
 type Customer = {
   id: string;
@@ -87,6 +88,7 @@ const formatRelativeTime = (date: string) => {
 };
 
 export function Dashboard() {
+  const { isAdmin } = useAuth();
   const [tickets] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
   const [sales] = usePersistentState<PosSale[]>("gamingtech.posSales", []);
   const [customers] = usePersistentState<Customer[]>("gamingtech.customers", []);
@@ -202,6 +204,7 @@ export function Dashboard() {
       icon: Wrench,
       color: "text-primary",
       bgColor: "bg-primary/10",
+      href: "/repairs?view=today",
     },
     {
       title: "Active Repairs",
@@ -211,6 +214,7 @@ export function Dashboard() {
       icon: Clock,
       color: "text-warning",
       bgColor: "bg-warning/10",
+      href: "/repairs?view=active",
     },
     {
       title: "Waiting for Parts",
@@ -220,6 +224,7 @@ export function Dashboard() {
       icon: Package,
       color: "text-destructive",
       bgColor: "bg-destructive/10",
+      href: "/repairs?status=waiting_parts",
     },
     {
       title: "Ready for Pickup",
@@ -229,6 +234,7 @@ export function Dashboard() {
       icon: CheckCircle2,
       color: "text-success",
       bgColor: "bg-success/10",
+      href: "/repairs?status=ready",
     },
     {
       title: "Today's Revenue",
@@ -238,6 +244,7 @@ export function Dashboard() {
       icon: DollarSign,
       color: "text-success",
       bgColor: "bg-success/10",
+      href: "/pos/sales-history",
     },
     {
       title: "Monthly Revenue",
@@ -247,6 +254,7 @@ export function Dashboard() {
       icon: TrendingUp,
       color: "text-accent",
       bgColor: "bg-accent/10",
+      href: "/finance",
     },
     {
       title: "Total Customers",
@@ -256,6 +264,7 @@ export function Dashboard() {
       icon: Users,
       color: "text-primary",
       bgColor: "bg-primary/10",
+      href: "/customers",
     },
     {
       title: "Low Stock Items",
@@ -265,6 +274,7 @@ export function Dashboard() {
       icon: AlertTriangle,
       color: "text-warning",
       bgColor: "bg-warning/10",
+      href: "/parts?view=low",
     },
   ];
 
@@ -272,10 +282,11 @@ export function Dashboard() {
     <div className="space-y-6 pb-20 lg:pb-6">
       {/* Stats Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => {
+        {stats.filter((stat) => isAdmin || !["Today's Revenue", "Monthly Revenue"].includes(stat.title)).map((stat) => {
           const Icon = stat.icon;
           return (
-            <Card key={stat.title} className="shadow-sm">
+            <Link key={stat.title} to={stat.href} className="block rounded-xl focus:outline-none focus:ring-2 focus:ring-primary">
+            <Card className="h-full shadow-sm transition-colors hover:bg-accent/40 cursor-pointer">
               <CardContent className="p-5">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
@@ -304,10 +315,12 @@ export function Dashboard() {
                 </div>
               </CardContent>
             </Card>
+            </Link>
           );
         })}
       </div>
 
+      {isAdmin && <>
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Revenue Chart */}
@@ -532,6 +545,7 @@ export function Dashboard() {
           </Card>
         </Link>
       </div>
+      </>}
     </div>
   );
 }

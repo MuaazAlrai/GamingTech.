@@ -1,9 +1,10 @@
 import { createBrowserRouter } from "react-router";
 import { ProtectedRootLayout } from "./auth/protected-root-layout";
+import { AdminOnly } from "./auth/admin-only";
 import { Dashboard } from "./pages/dashboard";
 import { Login } from "./pages/auth/login";
-import { Register } from "./pages/auth/register";
 import { ForgotPassword } from "./pages/auth/forgot-password";
+import { Register } from "./pages/auth/register";
 import { RepairTickets } from "./pages/repairs/repair-tickets";
 import { CreateRepairTicket } from "./pages/repairs/create-repair-ticket";
 import { RepairDetails } from "./pages/repairs/repair-details";
@@ -32,12 +33,12 @@ export const router = createBrowserRouter([
     Component: Login,
   },
   {
-    path: "/register",
-    Component: Register,
-  },
-  {
     path: "/forgot-password",
     Component: ForgotPassword,
+  },
+  {
+    path: "/register",
+    Component: Register,
   },
   {
     path: "/",
@@ -47,85 +48,36 @@ export const router = createBrowserRouter([
         index: true,
         Component: Dashboard,
       },
+      { path: "repairs", Component: RepairTickets },
+      { path: "repairs/:id", Component: RepairDetails },
+      { path: "parts", Component: PartsInventory },
+      { path: "parts/:id", Component: PartDetails },
+      { path: "customers", Component: CustomerDirectory },
+      { path: "customers/:id", Component: CustomerProfile },
+      { path: "repairs/create", Component: CreateRepairTicket },
+      { path: "inventory", Component: InventoryDashboard },
+      { path: "inventory/status-board", Component: GpuStatusBoard },
+      { path: "inventory/timeline", Component: GpuTimeline },
+      { path: "inventory/gallery", Component: GpuGallery },
+      { path: "profile", Component: UserProfile },
       {
-        path: "repairs",
-        Component: RepairTickets,
-      },
-      {
-        path: "repairs/create",
-        Component: CreateRepairTicket,
-      },
-      {
-        path: "repairs/:id",
-        Component: RepairDetails,
-      },
-      {
-        path: "parts",
-        Component: PartsInventory,
-      },
-      {
-        path: "parts/:id",
-        Component: PartDetails,
-      },
-      {
-        path: "inventory",
-        Component: InventoryDashboard,
-      },
-      {
-        path: "inventory/status-board",
-        Component: GpuStatusBoard,
-      },
-      {
-        path: "inventory/timeline",
-        Component: GpuTimeline,
-      },
-      {
-        path: "inventory/gallery",
-        Component: GpuGallery,
-      },
-      {
-        path: "customers",
-        Component: CustomerDirectory,
-      },
-      {
-        path: "customers/:id",
-        Component: CustomerProfile,
-      },
-      {
-        path: "pos",
-        Component: POSDashboard,
-      },
-      {
-        path: "pos/new-sale",
-        Component: NewSale,
-      },
-      {
-        path: "pos/sales-history",
-        Component: SalesHistory,
-      },
-      {
-        path: "pos/reports",
-        Component: SalesReport,
-      },
-      {
-        path: "billing",
-        Component: BillingDashboard,
-      },
+        Component: AdminOnly,
+        children: [
+      { path: "pos", Component: POSDashboard },
+      { path: "pos/new-sale", Component: NewSale },
+      { path: "pos/sales-history", Component: SalesHistory },
+      { path: "pos/reports", Component: SalesReport },
+      { path: "billing", Component: BillingDashboard },
+      { path: "reports", Component: Reports },
       {
         path: "finance",
         Component: FinanceDashboard,
       },
       {
-        path: "reports",
-        Component: Reports,
-      },
-      {
         path: "settings",
         Component: Settings,
       },
-      {
-        path: "profile",
-        Component: UserProfile,
+        ],
       },
       {
         path: "*",

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { ArrowLeft, Search, Plus, Trash2, CreditCard } from "lucide-react";
+import { ArrowLeft, Search, Plus, Trash2, CreditCard, Pencil } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -8,12 +8,16 @@ import { Separator } from "../../components/ui/separator";
 import { toast } from "sonner";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { PosSale, PosSaleItem } from "../../types/pos-sale";
+import { Label } from "../../components/ui/label";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { printPosReceipt } from "../../utils/print-pos-receipt";
 
 type InventoryProduct = {
   id: string;
   name: string;
   sellingPrice: number;
   stock: number;
+  category: string; sku: string; reorderLevel: number; unit: string; costPrice: number; supplier: string; location: string;
 };
 
 export function NewSale() {
@@ -22,6 +26,23 @@ export function NewSale() {
   const [searchQuery, setSearchQuery] = useState("");
   const [products, setProducts] = usePersistentState<InventoryProduct[]>("gamingtech.parts", []);
   const [sales, setSales] = usePersistentState<PosSale[]>("gamingtech.posSales", []);
+  const [productDialogOpen, setProductDialogOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<InventoryProduct | null>(null);
+  const [productForm, setProductForm] = useState({ name: "", sku: "", sellingPrice: "0", stock: "0" });
+
+  const openProductDialog = (product?: InventoryProduct) => {
+    setEditingProduct(product || null);
+    setProductForm(product ? { name: product.name, sku: product.sku, sellingPrice: String(product.sellingPrice), stock: String(product.stock) } : { name: "", sku: "", sellingPrice: "0", stock: "0" });
+    setProductDialogOpen(true);
+  };
+
+  const saveProduct = (event: React.FormEvent) => {
+    event.preventDefault();
+    const product: InventoryProduct = editingProduct ? { ...editingProduct, name: productForm.name, sku: productForm.sku, sellingPrice: Number(productForm.sellingPrice), stock: Number(productForm.stock) } : { id: `PRT-${Date.now()}`, name: productForm.name, sku: productForm.sku, sellingPrice: Number(productForm.sellingPrice), stock: Number(productForm.stock), category: "POS Products", reorderLevel: 2, unit: "pcs", costPrice: 0, supplier: "", location: "POS" };
+    setProducts((current) => editingProduct ? current.map((item) => item.id === editingProduct.id ? product : item) : [...current, product]);
+    setProductDialogOpen(false);
+    toast.success(editingProduct ? "Product updated." : "Product added to POS.");
+  };
 
   const addToCart = (product: InventoryProduct) => {
     if (product.stock < 1) {
@@ -86,6 +107,7 @@ export function NewSale() {
         return soldItem ? { ...product, stock: product.stock - soldItem.quantity } : product;
       }),
     );
+    if (!printPosReceipt(sale)) toast.error("Print window was blocked. Reprint it from Sales History.");
     toast.success("Sale completed successfully!");
     navigate("/pos");
   };
@@ -107,7 +129,7 @@ export function NewSale() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Select Products</CardTitle>
+              <div className="flex items-center justify-between gap-3"><CardTitle>Select Products</CardTitle><Button size="sm" className="gap-2" onClick={() => openProductDialog()}><Plus className="h-4 w-4" />Add Product</Button></div>
               <div className="relative mt-4">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
@@ -134,7 +156,7 @@ export function NewSale() {
                       onClick={() => addToCart(product)}
                     >
                       <CardContent className="p-4">
-                        <h3 className="font-medium">{product.name}</h3>
+                        <div className="flex items-start justify-between"><h3 className="font-medium">{product.name}</h3><Button type="button" variant="ghost" size="icon" className="h-7 w-7" onClick={(event) => { event.stopPropagation(); openProductDialog(product); }}><Pencil className="h-3.5 w-3.5" /></Button></div>
                         <div className="flex items-center justify-between mt-2">
                           <span className="text-lg font-bold">₨{product.sellingPrice.toLocaleString()}</span>
                           <span className="text-sm text-muted-foreground">Stock: {product.stock}</span>
@@ -212,6 +234,7 @@ export function NewSale() {
           </Card>
         </div>
       </div>
+      <Dialog open={productDialogOpen} onOpenChange={setProductDialogOpen}><DialogContent><DialogHeader><DialogTitle>{editingProduct ? "Edit POS Product" : "Add POS Product"}</DialogTitle></DialogHeader><form onSubmit={saveProduct} className="space-y-4"><div className="space-y-2"><Label htmlFor="posName">Product Name</Label><Input id="posName" value={productForm.name} onChange={(e) => setProductForm({ ...productForm, name: e.target.value })} required /></div><div className="space-y-2"><Label htmlFor="posSku">SKU</Label><Input id="posSku" value={productForm.sku} onChange={(e) => setProductForm({ ...productForm, sku: e.target.value })} required /></div><div className="grid grid-cols-2 gap-4"><div className="space-y-2"><Label htmlFor="posPrice">Selling Price</Label><Input id="posPrice" type="number" min="0" value={productForm.sellingPrice} onChange={(e) => setProductForm({ ...productForm, sellingPrice: e.target.value })} required /></div><div className="space-y-2"><Label htmlFor="posStock">Stock</Label><Input id="posStock" type="number" min="0" value={productForm.stock} onChange={(e) => setProductForm({ ...productForm, stock: e.target.value })} required /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setProductDialogOpen(false)}>Cancel</Button><Button type="submit">{editingProduct ? "Save Changes" : "Add Product"}</Button></DialogFooter></form></DialogContent></Dialog>
     </div>
   );
 }

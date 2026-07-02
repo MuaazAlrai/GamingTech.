@@ -1,5 +1,5 @@
 import { Link } from "react-router";
-import { ArrowLeft, ReceiptText, Search } from "lucide-react";
+import { ArrowLeft, ReceiptText, Search, Printer } from "lucide-react";
 import { useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -14,6 +14,7 @@ import {
 } from "../../components/ui/table";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { PosSale } from "../../types/pos-sale";
+import { printPosReceipt } from "../../utils/print-pos-receipt";
 
 export function SalesHistory() {
   const [sales] = usePersistentState<PosSale[]>("gamingtech.posSales", []);
@@ -67,12 +68,13 @@ export function SalesHistory() {
                   <TableHead className="text-right">Subtotal</TableHead>
                   <TableHead className="text-right">Tax</TableHead>
                   <TableHead className="text-right">Total</TableHead>
+                  <TableHead className="text-right">Receipt</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredSales.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                       <ReceiptText className="mx-auto mb-3 h-8 w-8" />
                       No sales found. Complete a POS checkout first.
                     </TableCell>
@@ -92,6 +94,11 @@ export function SalesHistory() {
                       </TableCell>
                       <TableCell className="text-right font-semibold">
                         ₨{sale.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button variant="outline" size="sm" onClick={() => printPosReceipt(sale)}>
+                          <Printer className="mr-2 h-4 w-4" /> Print
+                        </Button>
                       </TableCell>
                     </TableRow>
                   ))

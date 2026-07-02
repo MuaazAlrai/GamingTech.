@@ -11,4 +11,9 @@ export type RepairTicket = {
   createdAt: string;
   estimatedCompletion: string;
   amount: number;
+  customerPhone?: string;
+  brand?: string;
+  model?: string;
+  serialNumber?: string;
+  accessories?: string;
 };

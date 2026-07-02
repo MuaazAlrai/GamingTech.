@@ -17,13 +17,16 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { toast } from "sonner";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { RepairTicket } from "../../types/repair-ticket";
+import { printRepairLabel } from "../../utils/print-repair-label";
 
-const existingCustomers = [
-  { value: "Ahmed Khan", label: "Ahmed Khan - +92 300 1234567" },
-  { value: "Sara Ali", label: "Sara Ali - +92 301 9876543" },
-  { value: "Bilal Ahmed", label: "Bilal Ahmed - +92 333 4567890" },
-  { value: "Fatima Noor", label: "Fatima Noor - +92 321 1112233" },
-];
+type Customer = {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  totalRepairs: number;
+  totalSpent: number;
+};
 
 const deviceTypeLabels: Record<string, string> = {
   gaming_pc: "Gaming PC",
@@ -51,11 +54,13 @@ export function CreateRepairTicket() {
     "gamingtech.repairTickets",
     [],
   );
+  const [customers, setCustomers] = usePersistentState<Customer[]>("gamingtech.customers", []);
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [deviceType, setDeviceType] = useState("");
   const [priority, setPriority] = useState("");
   const [technician, setTechnician] = useState("auto");
   const [conditions, setConditions] = useState<string[]>([]);
+  const [printLabel, setPrintLabel] = useState(true);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,13 +82,17 @@ export function CreateRepairTicket() {
     const formData = new FormData(e.currentTarget as HTMLFormElement);
     const now = new Date();
     const nextNumber = tickets.length + 1;
-    const customer =
-      customerType === "existing"
-        ? selectedCustomer
-        : String(formData.get("customerName") || "Walk-in Customer");
+    const selectedCustomerRecord = customers.find((item) => item.id === selectedCustomer);
+    const customer = customerType === "existing"
+      ? selectedCustomerRecord?.name || "Customer"
+      : String(formData.get("customerName") || "Walk-in Customer");
     const deviceLabel = deviceTypeLabels[deviceType] || "Device";
     const model = String(formData.get("model") || "").trim();
     const issueTitle = String(formData.get("issueTitle") || "").trim();
+    const customerPhone = customerType === "existing"
+      ? selectedCustomerRecord?.phone || ""
+      : String(formData.get("customerPhone") || "").trim();
+    const estimatedCost = Number(formData.get("estimatedCost") || 0);
 
     const ticket: RepairTicket = {
       id: `TKT-${String(nextNumber).padStart(4, "0")}`,
@@ -98,9 +107,35 @@ export function CreateRepairTicket() {
       createdAt: now.toISOString().slice(0, 10),
       estimatedCompletion: String(formData.get("estimatedCompletion") || ""),
       amount: Number(formData.get("estimatedCost") || 0),
+      customerPhone,
+      brand: String(formData.get("brand") || "").trim(),
+      model,
+      serialNumber: String(formData.get("serialNumber") || "").trim(),
+      accessories: String(formData.get("accessories") || "").trim(),
     };
 
     setTickets((current) => [ticket, ...current]);
+    setCustomers((current) => {
+      const existingIndex = customerType === "existing"
+        ? current.findIndex((item) => item.id === selectedCustomer)
+        : current.findIndex((item) => item.phone === customerPhone && customerPhone !== "");
+      if (existingIndex >= 0) {
+        return current.map((item, index) => index === existingIndex
+          ? { ...item, totalRepairs: item.totalRepairs + 1, totalSpent: item.totalSpent + estimatedCost }
+          : item);
+      }
+      return [...current, {
+        id: `CUS-${Date.now()}`,
+        name: customer,
+        phone: customerPhone,
+        email: String(formData.get("customerEmail") || "").trim(),
+        totalRepairs: 1,
+        totalSpent: estimatedCost,
+      }];
+    });
+    if (printLabel && !printRepairLabel(ticket)) {
+      toast.error("Print window was blocked. Use Print Label from the ticket list.");
+    }
     toast.success("Repair ticket created successfully!");
     navigate("/repairs");
   };
@@ -153,9 +188,9 @@ export function CreateRepairTicket() {
                     <SelectValue placeholder="Search customer by name or phone" />
                   </SelectTrigger>
                   <SelectContent>
-                    {existingCustomers.map((customer) => (
-                      <SelectItem key={customer.value} value={customer.value}>
-                        {customer.label}
+                    {customers.map((customer) => (
+                      <SelectItem key={customer.id} value={customer.id}>
+                        {customer.name} - {customer.phone}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -357,6 +392,16 @@ export function CreateRepairTicket() {
         </Card>
 
         {/* Actions */}
+        <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/30 p-4">
+          <Checkbox
+            id="printLabel"
+            checked={printLabel}
+            onCheckedChange={(checked) => setPrintLabel(checked === true)}
+          />
+          <label htmlFor="printLabel" className="cursor-pointer text-sm font-medium">
+            Print 80 × 50 mm device label after creating ticket
+          </label>
+        </div>
         <div className="flex gap-4">
           <Button type="submit" className="flex-1">
             Create Repair Ticket

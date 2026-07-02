@@ -7,7 +7,13 @@ import { auth } from "../../firebase";
 type AuthContextValue = {
   user: User | null;
   loading: boolean;
+  role: "admin" | "employee" | null;
+  isAdmin: boolean;
 };
+
+const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || "admin@gamingtech.pk")
+  .trim()
+  .toLowerCase();
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
@@ -24,7 +30,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe;
   }, []);
 
-  const value = useMemo(() => ({ user, loading }), [user, loading]);
+  const role = user
+    ? user.email?.toLowerCase() === adminEmail
+      ? "admin"
+      : "employee"
+    : null;
+  const value = useMemo(
+    () => ({ user, loading, role, isAdmin: role === "admin" }),
+    [user, loading, role],
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
