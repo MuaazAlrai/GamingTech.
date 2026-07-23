@@ -194,12 +194,12 @@ export function InventoryDashboard() {
         </CardHeader>
         <CardContent>
           <div className="grid md:grid-cols-4 gap-4">
-            <Link to="/parts">
+            <Link to="/inventory">
               <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
                 <CardContent className="p-6 text-center">
                   <Cpu className="h-8 w-8 mx-auto text-primary mb-2" />
-                  <h3 className="font-medium">All GPUs</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Browse GPU inventory</p>
+                  <h3 className="font-medium">Main Inventory</h3>
+                  <p className="text-xs text-muted-foreground mt-1">Browse all inventory items</p>
                 </CardContent>
               </Card>
             </Link>
@@ -311,7 +311,7 @@ export function InventoryDashboard() {
                   <SelectTrigger><SelectValue placeholder="Select an existing GPU product" /></SelectTrigger>
                   <SelectContent>{gpuParts.map((part) => <SelectItem key={part.id} value={part.id}>{part.name} - Stock: {part.stock}</SelectItem>)}</SelectContent>
                 </Select>
-                {gpuParts.length === 0 && <p className="text-xs text-muted-foreground">Add products with category GPU in Parts Inventory first.</p>}
+                {gpuParts.length === 0 && <p className="text-xs text-muted-foreground">Add products with category GPU in Inventory first.</p>}
               </div>
             )}
             <div className="space-y-2">

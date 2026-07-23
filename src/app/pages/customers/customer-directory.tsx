@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/ca
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import {
   Dialog,
@@ -28,6 +29,8 @@ type Customer = {
   name: string;
   phone: string;
   email: string;
+  address?: string;
+  description?: string;
   totalRepairs: number;
   totalSpent: number;
 };
@@ -46,13 +49,15 @@ export function CustomerDirectory() {
     name: "",
     phone: "",
     email: "",
+    address: "",
+    description: "",
     totalRepairs: "0",
     totalSpent: "0",
   });
 
   const openAddDialog = () => {
     setEditingCustomer(null);
-    setFormData({ name: "", phone: "", email: "", totalRepairs: "0", totalSpent: "0" });
+    setFormData({ name: "", phone: "", email: "", address: "", description: "", totalRepairs: "0", totalSpent: "0" });
     setDialogOpen(true);
   };
 
@@ -62,6 +67,8 @@ export function CustomerDirectory() {
       name: customer.name,
       phone: customer.phone,
       email: customer.email,
+      address: customer.address ?? "",
+      description: customer.description ?? "",
       totalRepairs: String(customer.totalRepairs),
       totalSpent: String(customer.totalSpent),
     });
@@ -80,6 +87,8 @@ export function CustomerDirectory() {
                 name: formData.name,
                 phone: formData.phone,
                 email: formData.email,
+                address: formData.address,
+                description: formData.description,
                 totalRepairs: Number(formData.totalRepairs),
                 totalSpent: Number(formData.totalSpent),
               }
@@ -94,6 +103,8 @@ export function CustomerDirectory() {
           name: formData.name,
           phone: formData.phone,
           email: formData.email,
+          address: formData.address,
+          description: formData.description,
           totalRepairs: Number(formData.totalRepairs),
           totalSpent: Number(formData.totalSpent),
         },
@@ -249,6 +260,25 @@ export function CustomerDirectory() {
                 value={formData.email}
                 onChange={(event) => setFormData({ ...formData, email: event.target.value })}
                 required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customerAddress">Address</Label>
+              <Input
+                id="customerAddress"
+                value={formData.address}
+                onChange={(event) => setFormData({ ...formData, address: event.target.value })}
+                placeholder="Customer address"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="customerDescription">Description</Label>
+              <Textarea
+                id="customerDescription"
+                value={formData.description}
+                onChange={(event) => setFormData({ ...formData, description: event.target.value })}
+                placeholder="Customer note, preference, or special instruction"
+                rows={3}
               />
             </div>
             <div className="grid gap-4 md:grid-cols-2">

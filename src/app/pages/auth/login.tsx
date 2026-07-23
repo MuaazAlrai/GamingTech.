@@ -94,10 +94,7 @@ export function Login() {
           </Button>
         </form>
 
-        <p className="text-center text-sm text-muted-foreground">
-          New employee?{" "}
-          <Link to="/register" className="font-medium text-primary hover:underline">Create account</Link>
-        </p>
+        <p className="text-center text-sm text-muted-foreground">New employee accounts are created by the Super Admin.</p>
       </div>
     </div>
   );

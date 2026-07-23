@@ -114,17 +114,17 @@ export function Layout() {
             </Link>
 
             <Link
-              to="/parts"
+              to="/inventory"
               className={`
                 flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-all
-                ${isActive("/parts")
+                ${isActive("/inventory")
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
                 }
               `}
             >
               <Package2 className="h-5 w-5" />
-              <span className="flex-1">Parts</span>
+              <span className="flex-1">Inventory</span>
             </Link>
 
             <Link
@@ -256,7 +256,7 @@ export function Layout() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
-                placeholder="Search repairs, customers, parts..."
+                placeholder="Search repairs, customers, inventory..."
                 className="pl-9 bg-muted/50"
               />
             </div>

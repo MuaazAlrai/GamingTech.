@@ -97,7 +97,8 @@ export function Dashboard() {
 
   const today = new Date().toISOString().slice(0, 10);
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const todaysSales = sales.filter((sale) => sale.date.slice(0, 10) === today);
+  const completedSales = sales.filter((sale) => (sale.status ?? "completed") === "completed");
+  const todaysSales = completedSales.filter((sale) => sale.date.slice(0, 10) === today);
   const todaysTickets = tickets.filter((ticket) => ticket.createdAt?.slice(0, 10) === today);
   const activeTickets = tickets.filter((ticket) =>
     ["received", "diagnosing", "repairing", "testing", "pending", "waiting_approval"].includes(
@@ -107,7 +108,7 @@ export function Dashboard() {
   const waitingParts = tickets.filter((ticket) => ticket.status === "waiting_parts");
   const readyTickets = tickets.filter((ticket) => ticket.status === "ready");
   const todaysRevenue = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
-  const monthlyRevenue = sales
+  const monthlyRevenue = completedSales
     .filter((sale) => sale.date.slice(0, 7) === currentMonth)
     .reduce((sum, sale) => sum + sale.total, 0);
   const lowStockItems = parts
@@ -123,7 +124,7 @@ export function Dashboard() {
 
     return {
       name: monthFormatter.format(date),
-      revenue: sales
+      revenue: completedSales
         .filter((sale) => sale.date.slice(0, 7) === monthKey)
         .reduce((sum, sale) => sum + sale.total, 0),
       repairs: tickets.filter((ticket) => ticket.createdAt?.slice(0, 7) === monthKey).length,
@@ -274,7 +275,7 @@ export function Dashboard() {
       icon: AlertTriangle,
       color: "text-warning",
       bgColor: "bg-warning/10",
-      href: "/parts?view=low",
+      href: "/inventory?view=low",
     },
   ];
 
@@ -470,7 +471,7 @@ export function Dashboard() {
               <CardTitle>Low Stock Alert</CardTitle>
               <CardDescription>Items need reordering</CardDescription>
             </div>
-            <Link to="/parts">
+            <Link to="/inventory">
               <Button variant="ghost" size="sm">
                 View All
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -521,8 +522,8 @@ export function Dashboard() {
           <Card className="hover:bg-accent/50 transition-colors cursor-pointer">
             <CardContent className="p-6 text-center">
               <Boxes className="h-8 w-8 mx-auto text-accent mb-2" />
-              <h3 className="font-medium">GPU Inventory</h3>
-              <p className="text-xs text-muted-foreground mt-1">Stock management</p>
+              <h3 className="font-medium">Inventory</h3>
+              <p className="text-xs text-muted-foreground mt-1">Products & stock</p>
             </CardContent>
           </Card>
         </Link>

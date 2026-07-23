@@ -1,13 +1,116 @@
 import type { PosSale } from "../types/pos-sale";
 
-const safe = (value: string | number) => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-const money = (value: number) => `Rs ${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const safe = (value: string | number | undefined) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+
+const money = (value: number) => `Rs ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
 export function printPosReceipt(sale: PosSale) {
-  const printWindow = window.open("", "_blank", "width=420,height=650");
+  const printWindow = window.open("", "_blank", "width=900,height=760");
   if (!printWindow) return false;
-  const rows = sale.items.map((item) => `<tr><td>${safe(item.name)}<small>${item.quantity} x ${money(item.price)}</small></td><td>${money(item.price * item.quantity)}</td></tr>`).join("");
-  printWindow.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${safe(sale.id)} Receipt</title><style>@page{size:80mm auto;margin:3mm}*{box-sizing:border-box}body{width:74mm;margin:0;font:10pt Arial;color:#000}.center{text-align:center}h1{font-size:17pt;margin:0}.muted{font-size:8pt;margin:1mm 0 3mm}hr{border:0;border-top:1px dashed #000;margin:3mm 0}table{width:100%;border-collapse:collapse}td{padding:1.5mm 0;vertical-align:top}td:last-child{text-align:right;white-space:nowrap}small{display:block;font-size:7.5pt}.total{font-size:13pt;font-weight:700}.footer{margin-top:5mm;font-size:8pt}</style></head><body><div class="center"><h1>GamingTech.pk</h1><div class="muted">SALES RECEIPT</div></div><div>Bill: <b>${safe(sale.id)}</b></div><div>Date: ${safe(new Date(sale.date).toLocaleString())}</div><hr><table>${rows}</table><hr><table><tr><td>Subtotal</td><td>${money(sale.subtotal)}</td></tr><tr><td>Tax (17%)</td><td>${money(sale.tax)}</td></tr><tr class="total"><td>Total</td><td>${money(sale.total)}</td></tr><tr><td>Payment</td><td>${safe(sale.paymentMethod)}</td></tr></table><div class="center footer">Thank you for shopping with GamingTech.pk</div><script>window.addEventListener('load',function(){setTimeout(function(){window.print()},150)});<\/script></body></html>`);
+
+  const paid = sale.paidAmount ?? sale.total;
+  const balance = Math.max(0, sale.total - paid);
+  const rows = sale.items.map((item, index) => `
+    <tr>
+      <td class="center">${index + 1}</td>
+      <td>${safe(item.id)}</td>
+      <td><b>${safe(item.name)}</b></td>
+      <td class="center">${item.quantity}</td>
+      <td class="right">${money(item.price)}</td>
+      <td class="right">${money(item.price * item.quantity)}</td>
+    </tr>
+  `).join("");
+
+  printWindow.document.write(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${safe(sale.id)} Sale Invoice</title>
+  <style>
+    @page { size: A4; margin: 12mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111827; background: #f3f4f6; }
+    .no-print { padding: 12px; text-align: right; }
+    .no-print button { border: 0; border-radius: 6px; background: #10b981; color: white; padding: 10px 16px; font-weight: 800; cursor: pointer; }
+    .invoice { max-width: 820px; margin: 0 auto 24px; background: white; border: 1px solid #d1d5db; box-shadow: 0 12px 28px rgb(15 23 42 / 12%); }
+    .top { background: #10b981; color: white; padding: 18px 22px; display: flex; justify-content: space-between; gap: 18px; }
+    .brand h1 { margin: 0; font-size: 26px; }
+    .brand p { margin: 4px 0 0; opacity: .9; }
+    .meta { text-align: right; font-size: 13px; line-height: 1.6; }
+    .section { padding: 18px 22px; }
+    .party { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .box { border: 1px solid #dbe2ea; border-radius: 6px; padding: 12px; min-height: 92px; }
+    .box h3 { margin: 0 0 8px; color: #059669; font-size: 12px; text-transform: uppercase; }
+    .box p { margin: 3px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th { background: #10b981; color: white; padding: 10px; font-size: 12px; text-align: left; }
+    td { border-bottom: 1px solid #e5e7eb; padding: 10px; font-size: 12px; }
+    .right { text-align: right; }
+    .center { text-align: center; }
+    .totals { width: 360px; margin-left: auto; margin-top: 18px; border: 1px solid #dbe2ea; border-radius: 6px; overflow: hidden; }
+    .totals td { border: 0; padding: 8px 12px; }
+    .totals .grand td { background: #10b981; color: white; font-size: 16px; font-weight: 800; }
+    .footer { padding: 16px 22px; border-top: 1px solid #e5e7eb; text-align: center; color: #6b7280; font-size: 12px; }
+    @media print {
+      body { background: white; }
+      .no-print { display: none; }
+      .invoice { box-shadow: none; margin: 0; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print"><button onclick="window.print()">Print / Save Invoice</button></div>
+  <main class="invoice">
+    <div class="top">
+      <div class="brand">
+        <h1>GamingTech.pk</h1>
+        <p>Sale Invoice</p>
+      </div>
+      <div class="meta">
+        <div><b>Invoice:</b> ${safe(sale.id)}</div>
+        <div><b>Date:</b> ${safe(new Date(sale.date).toLocaleString())}</div>
+        <div><b>Cashier:</b> ${safe(sale.cashierName ?? "Staff")}</div>
+      </div>
+    </div>
+    <section class="section party">
+      <div class="box">
+        <h3>Party / Customer</h3>
+        <p><b>${safe(sale.customerName ?? "Walk-in Customer")}</b></p>
+        <p>${safe(sale.customerPhone || "No phone")}</p>
+        <p>${safe(sale.customerAddress || "No address")}</p>
+      </div>
+      <div class="box">
+        <h3>Payment</h3>
+        <p><b>Method:</b> ${safe(sale.paymentMethod)}</p>
+        <p><b>Paid:</b> ${money(paid)}</p>
+        <p><b>Balance:</b> ${money(balance)}</p>
+      </div>
+    </section>
+    <section class="section">
+      <table>
+        <thead>
+          <tr><th class="center">#Sr</th><th>Code</th><th>Name</th><th class="center">Qty</th><th class="right">Sale Price</th><th class="right">Amount</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <table class="totals">
+        <tr><td>Sub Total</td><td class="right">${money(sale.subtotal)}</td></tr>
+        <tr><td>Discount</td><td class="right">- ${money(sale.discount ?? 0)}</td></tr>
+        <tr><td>Tax (${safe(sale.taxRate ?? 0)}%)</td><td class="right">${money(sale.tax)}</td></tr>
+        <tr class="grand"><td>Total</td><td class="right">${money(sale.total)}</td></tr>
+        <tr><td>Paid</td><td class="right">${money(paid)}</td></tr>
+        <tr><td>Balance</td><td class="right">${money(balance)}</td></tr>
+      </table>
+    </section>
+    <div class="footer">Thank you for shopping with GamingTech.pk</div>
+  </main>
+  <script>window.addEventListener('load', () => setTimeout(() => window.print(), 180));<\/script>
+</body>
+</html>`);
   printWindow.document.close();
   return true;
 }

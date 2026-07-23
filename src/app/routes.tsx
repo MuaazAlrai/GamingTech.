@@ -1,6 +1,6 @@
-import { createBrowserRouter } from "react-router";
+import { Navigate, createBrowserRouter } from "react-router";
 import { ProtectedRootLayout } from "./auth/protected-root-layout";
-import { AdminOnly } from "./auth/admin-only";
+import { PermissionGuard } from "./auth/permission-guard";
 import { Dashboard } from "./pages/dashboard";
 import { Login } from "./pages/auth/login";
 import { ForgotPassword } from "./pages/auth/forgot-password";
@@ -16,73 +16,56 @@ import { GpuStatusBoard } from "./pages/inventory/gpu-status-board";
 import { GpuTimeline } from "./pages/inventory/gpu-timeline";
 import { CustomerDirectory } from "./pages/customers/customer-directory";
 import { CustomerProfile } from "./pages/customers/customer-profile";
-import { POSDashboard } from "./pages/pos/pos-dashboard";
+import { POSHome } from "./pages/pos/pos-home";
 import { NewSale } from "./pages/pos/new-sale";
 import { SalesHistory } from "./pages/pos/sales-history";
 import { SalesReport } from "./pages/pos/sales-report";
+import { StaffSecurity } from "./pages/pos/staff-security";
 import { BillingDashboard } from "./pages/billing/billing-dashboard";
 import { FinanceDashboard } from "./pages/finance/finance-dashboard";
 import { Reports } from "./pages/reports/reports";
 import { Settings } from "./pages/settings/settings";
 import { UserProfile } from "./pages/profile/user-profile";
+import { UserManagement } from "./pages/users/user-management";
+import { Unauthorized } from "./pages/unauthorized";
 import { NotFound } from "./pages/not-found";
 
 export const router = createBrowserRouter([
-  {
-    path: "/login",
-    Component: Login,
-  },
-  {
-    path: "/forgot-password",
-    Component: ForgotPassword,
-  },
-  {
-    path: "/register",
-    Component: Register,
-  },
+  { path: "/login", Component: Login },
+  { path: "/forgot-password", Component: ForgotPassword },
+  { path: "/register", element: <Navigate to="/login" replace /> },
   {
     path: "/",
     Component: ProtectedRootLayout,
     children: [
-      {
-        index: true,
-        Component: Dashboard,
-      },
-      { path: "repairs", Component: RepairTickets },
-      { path: "repairs/:id", Component: RepairDetails },
-      { path: "parts", Component: PartsInventory },
-      { path: "parts/:id", Component: PartDetails },
-      { path: "customers", Component: CustomerDirectory },
-      { path: "customers/:id", Component: CustomerProfile },
-      { path: "repairs/create", Component: CreateRepairTicket },
-      { path: "inventory", Component: InventoryDashboard },
-      { path: "inventory/status-board", Component: GpuStatusBoard },
-      { path: "inventory/timeline", Component: GpuTimeline },
-      { path: "inventory/gallery", Component: GpuGallery },
-      { path: "profile", Component: UserProfile },
-      {
-        Component: AdminOnly,
-        children: [
-      { path: "pos", Component: POSDashboard },
-      { path: "pos/new-sale", Component: NewSale },
-      { path: "pos/sales-history", Component: SalesHistory },
-      { path: "pos/reports", Component: SalesReport },
-      { path: "billing", Component: BillingDashboard },
-      { path: "reports", Component: Reports },
-      {
-        path: "finance",
-        Component: FinanceDashboard,
-      },
-      {
-        path: "settings",
-        Component: Settings,
-      },
-        ],
-      },
-      {
-        path: "*",
-        Component: NotFound,
-      },
+      { element: <PermissionGuard permission="dashboard.view" />, children: [{ index: true, Component: Dashboard }] },
+      { path: "unauthorized", Component: Unauthorized },
+      { path: "parts", element: <Navigate to="/inventory" replace /> },
+      { path: "parts/:id", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: PartDetails }] },
+      { path: "repairs", element: <PermissionGuard permission="repairs.view" />, children: [{ index: true, Component: RepairTickets }] },
+      { path: "repairs/create", element: <PermissionGuard permission="repairs.create" />, children: [{ index: true, Component: CreateRepairTicket }] },
+      { path: "repairs/:id", element: <PermissionGuard permission="repairs.view" />, children: [{ index: true, Component: RepairDetails }] },
+      { path: "customers", element: <PermissionGuard permission="customers.view" />, children: [{ index: true, Component: CustomerDirectory }] },
+      { path: "customers/:id", element: <PermissionGuard permission="customers.view" />, children: [{ index: true, Component: CustomerProfile }] },
+      { path: "inventory", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: PartsInventory }] },
+      { path: "inventory/gpu", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: InventoryDashboard }] },
+      { path: "inventory/:id", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: PartDetails }] },
+      { path: "inventory/status-board", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: GpuStatusBoard }] },
+      { path: "inventory/timeline", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: GpuTimeline }] },
+      { path: "inventory/gallery", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: GpuGallery }] },
+      { path: "profile", element: <PermissionGuard permission="profile.view" />, children: [{ index: true, Component: UserProfile }] },
+      { path: "pos", element: <PermissionGuard permission="sales.view" />, children: [{ index: true, Component: POSHome }] },
+      { path: "pos/sale", element: <PermissionGuard permission="sales.create" />, children: [{ index: true, Component: NewSale }] },
+      { path: "pos/new-sale", element: <PermissionGuard permission="sales.create" />, children: [{ index: true, Component: NewSale }] },
+      { path: "pos/sales-history", element: <PermissionGuard permission="sales.view" />, children: [{ index: true, Component: SalesHistory }] },
+      { path: "pos/staff-security", element: <PermissionGuard permission="sales.manage" />, children: [{ index: true, Component: StaffSecurity }] },
+      { path: "pos/reports", element: <PermissionGuard permission="reports.view" />, children: [{ index: true, Component: SalesReport }] },
+      { path: "billing", element: <PermissionGuard permission="billing.view" />, children: [{ index: true, Component: BillingDashboard }] },
+      { path: "reports", element: <PermissionGuard permission="reports.view" />, children: [{ index: true, Component: Reports }] },
+      { path: "finance", element: <PermissionGuard permission="finance.view" />, children: [{ index: true, Component: FinanceDashboard }] },
+      { path: "settings", element: <PermissionGuard permission="settings.view" />, children: [{ index: true, Component: Settings }] },
+      { path: "users", element: <PermissionGuard permission="users.view" />, children: [{ index: true, Component: UserManagement }] },
+      { path: "*", Component: NotFound },
     ],
   },
 ]);

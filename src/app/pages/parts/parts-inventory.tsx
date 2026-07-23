@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Search, Plus, AlertTriangle, Package, TrendingUp, Pencil, Trash2, RotateCcw } from "lucide-react";
+import { Search, Plus, AlertTriangle, Package, TrendingUp, Pencil, Trash2, RotateCcw, LayoutGrid, CalendarDays, Images, Cpu } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -30,8 +30,10 @@ import {
   DialogTitle,
 } from "../../components/ui/dialog";
 import { usePersistentState } from "../../hooks/use-persistent-state";
+import type { StockAdjustment } from "../../types/part";
+import { useAuth } from "../../auth/auth-context";
 
-type Part = {
+type InventoryItem = {
   id: string;
   name: string;
   category: string;
@@ -45,15 +47,17 @@ type Part = {
   location: string;
 };
 
-const initialParts: Part[] = [];
+const initialItems: InventoryItem[] = [];
 
 export function PartsInventory() {
+  const { hasPermission } = useAuth();
   const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
-  const [parts, setParts] = usePersistentState<Part[]>("gamingtech.parts", initialParts);
+  const [parts, setParts] = usePersistentState<InventoryItem[]>("gamingtech.parts", initialItems);
+  const [, setStockAdjustments] = usePersistentState<StockAdjustment[]>("gamingtech.stockAdjustments", []);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingPart, setEditingPart] = useState<Part | null>(null);
+  const [editingPart, setEditingPart] = useState<InventoryItem | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     category: "PC Parts",
@@ -84,7 +88,7 @@ export function PartsInventory() {
     setDialogOpen(true);
   };
 
-  const openEditDialog = (part: Part) => {
+  const openEditDialog = (part: InventoryItem) => {
     setEditingPart(part);
     setFormData({
       name: part.name,
@@ -103,7 +107,7 @@ export function PartsInventory() {
 
   const savePart = (event: React.FormEvent) => {
     event.preventDefault();
-    const nextPart: Part = {
+    const nextPart: InventoryItem = {
       id: editingPart?.id ?? `PRT-${String(parts.length + 1).padStart(3, "0")}`,
       name: formData.name,
       category: formData.category,
@@ -117,6 +121,10 @@ export function PartsInventory() {
       location: formData.location,
     };
 
+    if (editingPart && nextPart.stock !== editingPart.stock) {
+      setStockAdjustments((current) => [{ id: `ADJ-${Date.now()}-${nextPart.id}`, partId: nextPart.id, partName: nextPart.name, date: new Date().toISOString(), quantityChange: nextPart.stock - editingPart.stock, previousStock: editingPart.stock, newStock: nextPart.stock, reason: "manual", reference: "Adjusted from product editor" }, ...current]);
+    }
+
     setParts((current) =>
       editingPart
         ? current.map((part) => (part.id === editingPart.id ? nextPart : part))
@@ -129,11 +137,21 @@ export function PartsInventory() {
     setParts((current) => current.filter((part) => part.id !== id));
   };
 
-  const reorderPart = (part: Part) => {
+  const reorderPart = (part: InventoryItem) => {
     const suggested = Math.max(part.reorderLevel * 2 - part.stock, 1);
     const quantity = Number(window.prompt(`How many ${part.unit} of ${part.name} were received?`, String(suggested)));
     if (!Number.isFinite(quantity) || quantity <= 0) return;
     setParts((current) => current.map((item) => item.id === part.id ? { ...item, stock: item.stock + quantity } : item));
+    setStockAdjustments((current) => [{ id: `ADJ-${Date.now()}-${part.id}`, partId: part.id, partName: part.name, date: new Date().toISOString(), quantityChange: quantity, previousStock: part.stock, newStock: part.stock + quantity, reason: "stock-receipt", reference: "Inventory receipt" }, ...current]);
+  };
+
+  const adjustStock = (part: InventoryItem) => {
+    const quantityChange = Number(window.prompt(`Enter stock adjustment for ${part.name}. Use a positive number to add or negative number to remove.`, "0"));
+    if (!Number.isFinite(quantityChange) || quantityChange === 0) return;
+    if (part.stock + quantityChange < 0) return window.alert("Stock cannot be less than zero.");
+    const note = window.prompt("Reason / reference for this adjustment:", "Manual stock count") ?? "Manual stock count";
+    setParts((current) => current.map((item) => item.id === part.id ? { ...item, stock: item.stock + quantityChange } : item));
+    setStockAdjustments((current) => [{ id: `ADJ-${Date.now()}-${part.id}`, partId: part.id, partName: part.name, date: new Date().toISOString(), quantityChange, previousStock: part.stock, newStock: part.stock + quantityChange, reason: "manual", reference: note }, ...current]);
   };
 
   const filteredParts = parts.filter((part) => {
@@ -154,14 +172,14 @@ export function PartsInventory() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Parts Inventory</h1>
-          <p className="text-muted-foreground mt-1">Manage parts and stock levels</p>
+          <h1 className="text-3xl font-bold">Inventory</h1>
+          <p className="text-muted-foreground mt-1">Manage all products, GPUs, stock levels, pricing, and locations</p>
         </div>
         <div className="flex gap-2">
-          <Button className="gap-2" onClick={openAddDialog}>
+          {hasPermission("inventory.create") && <Button className="gap-2" onClick={openAddDialog}>
             <Plus className="h-4 w-4" />
-            Add New Part
-          </Button>
+            Add Inventory Item
+          </Button>}
         </div>
       </div>
 
@@ -171,7 +189,7 @@ export function PartsInventory() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Total Parts</p>
+                <p className="text-sm text-muted-foreground">Total Items</p>
                 <h3 className="text-2xl font-bold mt-1">{parts.length}</h3>
               </div>
               <div className="bg-primary/10 text-primary p-3 rounded-lg">
@@ -221,17 +239,47 @@ export function PartsInventory() {
         </Card>
       </div>
 
-      {/* Parts List */}
       <Card>
         <CardHeader>
-          <CardTitle>All Parts</CardTitle>
+          <CardTitle>Inventory Tools</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Link to="/inventory/gpu" className="rounded-lg border bg-card p-4 transition hover:bg-muted">
+              <Cpu className="mb-3 h-6 w-6 text-primary" />
+              <p className="font-semibold">GPU Records</p>
+              <p className="text-sm text-muted-foreground">Track GPU serials and customers</p>
+            </Link>
+            <Link to="/inventory/status-board" className="rounded-lg border bg-card p-4 transition hover:bg-muted">
+              <LayoutGrid className="mb-3 h-6 w-6 text-success" />
+              <p className="font-semibold">Status Board</p>
+              <p className="text-sm text-muted-foreground">View GPU status groups</p>
+            </Link>
+            <Link to="/inventory/timeline" className="rounded-lg border bg-card p-4 transition hover:bg-muted">
+              <CalendarDays className="mb-3 h-6 w-6 text-warning" />
+              <p className="font-semibold">Timeline</p>
+              <p className="text-sm text-muted-foreground">Track inventory history</p>
+            </Link>
+            <Link to="/inventory/gallery" className="rounded-lg border bg-card p-4 transition hover:bg-muted">
+              <Images className="mb-3 h-6 w-6 text-accent" />
+              <p className="font-semibold">Gallery</p>
+              <p className="text-sm text-muted-foreground">View customer media</p>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Inventory List */}
+      <Card>
+        <CardHeader>
+          <CardTitle>All Inventory Items</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col md:flex-row gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by part name or SKU..."
+                placeholder="Search by item name or SKU..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -257,7 +305,7 @@ export function PartsInventory() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Part Name</TableHead>
+                  <TableHead>Item Name</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Stock</TableHead>
@@ -272,7 +320,7 @@ export function PartsInventory() {
                 {filteredParts.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
-                      No parts yet. Add your first part.
+                      No inventory items yet. Add your first item.
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -314,22 +362,25 @@ export function PartsInventory() {
                       <TableCell className="text-muted-foreground">{part.location}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
-                          <Link to={`/parts/${part.id}`}>
+                          <Link to={`/inventory/${part.id}`}>
                             <Button variant="ghost" size="sm">
                             View Details
                             </Button>
                           </Link>
-                          <Button variant={isLowStock ? "default" : "outline"} size="sm" onClick={() => reorderPart(part)}>
+                          {hasPermission("inventory.manage") && <Button variant={isLowStock ? "default" : "outline"} size="sm" onClick={() => reorderPart(part)}>
                             <RotateCcw className="mr-2 h-4 w-4" /> Reorder
-                          </Button>
-                          <Button variant="outline" size="sm" onClick={() => openEditDialog(part)}>
+                          </Button>}
+                          {hasPermission("inventory.manage") && <Button variant="outline" size="sm" onClick={() => adjustStock(part)}>
+                            <TrendingUp className="mr-2 h-4 w-4" /> Adjust Stock
+                          </Button>}
+                          {hasPermission("inventory.edit") && <Button variant="outline" size="sm" onClick={() => openEditDialog(part)}>
                             <Pencil className="mr-2 h-4 w-4" />
                             Edit
-                          </Button>
-                          <Button variant="destructive" size="sm" onClick={() => deletePart(part.id)}>
+                          </Button>}
+                          {hasPermission("inventory.delete") && <Button variant="destructive" size="sm" onClick={() => deletePart(part.id)}>
                             <Trash2 className="mr-2 h-4 w-4" />
                             Delete
-                          </Button>
+                          </Button>}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -345,12 +396,12 @@ export function PartsInventory() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingPart ? "Edit Part" : "Add New Part"}</DialogTitle>
+            <DialogTitle>{editingPart ? "Edit Inventory Item" : "Add Inventory Item"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={savePart} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="partName">Part Name</Label>
+                <Label htmlFor="partName">Item Name</Label>
                 <Input id="partName" value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} required />
               </div>
               <div className="space-y-2">
@@ -392,7 +443,7 @@ export function PartsInventory() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit">{editingPart ? "Save Changes" : "Add Part"}</Button>
+              <Button type="submit">{editingPart ? "Save Changes" : "Add Item"}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

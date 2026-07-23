@@ -80,17 +80,24 @@ export function RepairTickets() {
   const [priorityFilter, setPriorityFilter] = useState("all");
   const [tickets, setTickets] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
   const [editingTicket, setEditingTicket] = useState<RepairTicket | null>(null);
-  const [editForm, setEditForm] = useState({ customer: "", device: "", issue: "", status: "received", priority: "medium", estimatedCompletion: "", amount: "0" });
+  const [editForm, setEditForm] = useState({ customer: "", device: "", issue: "", status: "received", priority: "medium", estimatedCompletion: "", amount: "0", jobNumber: "", ticketNumber: "" });
 
   const openEdit = (ticket: RepairTicket) => {
     setEditingTicket(ticket);
-    setEditForm({ customer: ticket.customer, device: ticket.device, issue: ticket.issue, status: ticket.status, priority: ticket.priority, estimatedCompletion: ticket.estimatedCompletion, amount: String(ticket.amount) });
+    setEditForm({ customer: ticket.customer, device: ticket.device, issue: ticket.issue, status: ticket.status, priority: ticket.priority, estimatedCompletion: ticket.estimatedCompletion, amount: String(ticket.amount), jobNumber: ticket.jobNumber || "", ticketNumber: ticket.ticketNumber || ticket.id });
   };
 
   const saveEdit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingTicket) return;
-    setTickets((current) => current.map((ticket) => ticket.id === editingTicket.id ? { ...ticket, ...editForm, amount: Number(editForm.amount) } : ticket));
+    const jobNumber = editForm.jobNumber.trim();
+    const ticketNumber = editForm.ticketNumber.trim();
+    if (!jobNumber) return toast.error("Job Number is required.");
+    if (!ticketNumber) return toast.error("Ticket Number is required.");
+    if (jobNumber.toLowerCase() === ticketNumber.toLowerCase()) return toast.error("Job Number and Ticket Number cannot be identical.");
+    if (tickets.some((ticket) => ticket.id !== editingTicket.id && (ticket.jobNumber || "").toLowerCase() === jobNumber.toLowerCase())) return toast.error("Job Number already exists.");
+    if (tickets.some((ticket) => ticket.id !== editingTicket.id && (ticket.ticketNumber || ticket.id).toLowerCase() === ticketNumber.toLowerCase())) return toast.error("Ticket Number already exists.");
+    setTickets((current) => current.map((ticket) => ticket.id === editingTicket.id ? { ...ticket, ...editForm, jobNumber, ticketNumber, id: ticketNumber, amount: Number(editForm.amount) } : ticket));
     setEditingTicket(null);
     toast.success("Repair ticket updated.");
   };
@@ -110,6 +117,8 @@ export function RepairTickets() {
   const filteredTickets = tickets.filter((ticket) => {
     const matchesSearch =
       ticket.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (ticket.jobNumber || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (ticket.ticketNumber || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
       ticket.device.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStatus = statusFilter === "all" || ticket.status === statusFilter;
@@ -205,7 +214,7 @@ export function RepairTickets() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by ticket ID, customer, or device..."
+                placeholder="Search by ticket ID, job number, customer, or device..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -250,6 +259,8 @@ export function RepairTickets() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Ticket ID</TableHead>
+                  <TableHead>Job Number</TableHead>
+                  <TableHead>Ticket Number</TableHead>
                   <TableHead>Repair ID</TableHead>
                   <TableHead>Open</TableHead>
                   <TableHead>Customer</TableHead>
@@ -266,7 +277,7 @@ export function RepairTickets() {
               <TableBody>
                 {filteredTickets.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={14} className="text-center py-8 text-muted-foreground">
                       No repair tickets found
                     </TableCell>
                   </TableRow>
@@ -277,6 +288,8 @@ export function RepairTickets() {
                     return (
                       <TableRow key={ticket.id}>
                         <TableCell className="font-medium">{ticket.id}</TableCell>
+                        <TableCell className="font-medium">{ticket.jobNumber || "-"}</TableCell>
+                        <TableCell className="font-medium">{ticket.ticketNumber || ticket.id}</TableCell>
                         <TableCell className="font-medium">{ticket.repairId}</TableCell>
                         <TableCell>
                           <Badge variant="outline">{ticket.openStatus}</Badge>
@@ -327,7 +340,7 @@ export function RepairTickets() {
           </div>
         </CardContent>
       </Card>
-      <Dialog open={Boolean(editingTicket)} onOpenChange={(open) => !open && setEditingTicket(null)}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Edit Repair Ticket {editingTicket?.id}</DialogTitle></DialogHeader><form onSubmit={saveEdit} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Customer</Label><Input value={editForm.customer} onChange={(e) => setEditForm({ ...editForm, customer: e.target.value })} required /></div><div className="space-y-2"><Label>Device</Label><Input value={editForm.device} onChange={(e) => setEditForm({ ...editForm, device: e.target.value })} required /></div><div className="space-y-2 md:col-span-2"><Label>Issue</Label><Input value={editForm.issue} onChange={(e) => setEditForm({ ...editForm, issue: e.target.value })} required /></div><div className="space-y-2"><Label>Status</Label><Select value={editForm.status} onValueChange={(status) => setEditForm({ ...editForm, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(statusConfig).map(([value, item]) => <SelectItem key={value} value={value}>{item.label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Priority</Label><Select value={editForm.priority} onValueChange={(priority) => setEditForm({ ...editForm, priority })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem><SelectItem value="urgent">Urgent</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Estimated Completion</Label><Input type="date" value={editForm.estimatedCompletion} onChange={(e) => setEditForm({ ...editForm, estimatedCompletion: e.target.value })} /></div><div className="space-y-2"><Label>Amount</Label><Input type="number" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setEditingTicket(null)}>Cancel</Button><Button type="submit">Save Changes</Button></DialogFooter></form></DialogContent></Dialog>
+      <Dialog open={Boolean(editingTicket)} onOpenChange={(open) => !open && setEditingTicket(null)}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Edit Repair Ticket {editingTicket?.id}</DialogTitle></DialogHeader><form onSubmit={saveEdit} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Job Number</Label><Input value={editForm.jobNumber} onChange={(e) => setEditForm({ ...editForm, jobNumber: e.target.value })} required /><p className="text-xs text-muted-foreground">Customer ko diya jane wala repair reference number.</p></div><div className="space-y-2"><Label>Ticket Number</Label><Input value={editForm.ticketNumber} onChange={(e) => setEditForm({ ...editForm, ticketNumber: e.target.value })} required /><p className="text-xs text-muted-foreground">Shop mein device ke sath use hone wala internal ticket number.</p></div><div className="space-y-2"><Label>Customer</Label><Input value={editForm.customer} onChange={(e) => setEditForm({ ...editForm, customer: e.target.value })} required /></div><div className="space-y-2"><Label>Device</Label><Input value={editForm.device} onChange={(e) => setEditForm({ ...editForm, device: e.target.value })} required /></div><div className="space-y-2 md:col-span-2"><Label>Issue</Label><Input value={editForm.issue} onChange={(e) => setEditForm({ ...editForm, issue: e.target.value })} required /></div><div className="space-y-2"><Label>Status</Label><Select value={editForm.status} onValueChange={(status) => setEditForm({ ...editForm, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(statusConfig).map(([value, item]) => <SelectItem key={value} value={value}>{item.label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Priority</Label><Select value={editForm.priority} onValueChange={(priority) => setEditForm({ ...editForm, priority })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem><SelectItem value="urgent">Urgent</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Estimated Completion</Label><Input type="date" value={editForm.estimatedCompletion} onChange={(e) => setEditForm({ ...editForm, estimatedCompletion: e.target.value })} /></div><div className="space-y-2"><Label>Amount</Label><Input type="number" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setEditingTicket(null)}>Cancel</Button><Button type="submit">Save Changes</Button></DialogFooter></form></DialogContent></Dialog>
     </div>
   );
 }

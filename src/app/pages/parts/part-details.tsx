@@ -24,12 +24,12 @@ export function PartDetails() {
   return (
     <div className="space-y-6 pb-20 lg:pb-6">
       <div className="flex items-center gap-4">
-        <Button variant="ghost" size="icon" onClick={() => navigate("/parts")}>
+        <Button variant="ghost" size="icon" onClick={() => navigate("/inventory")}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
           <h1 className="text-3xl font-bold">{partData.name}</h1>
-          <p className="text-muted-foreground mt-1">Part Details - {partData.sku}</p>
+          <p className="text-muted-foreground mt-1">Inventory Item Details - {partData.sku}</p>
         </div>
       </div>
 
@@ -37,12 +37,12 @@ export function PartDetails() {
         <div className="lg:col-span-2">
           <Card>
             <CardHeader>
-              <CardTitle>Part Information</CardTitle>
+              <CardTitle>Inventory Item Information</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Part Name</p>
+                  <p className="text-sm text-muted-foreground">Item Name</p>
                   <p className="font-medium">{partData.name}</p>
                 </div>
                 <div>

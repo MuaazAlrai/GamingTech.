@@ -267,9 +267,9 @@ export function Dashboard() {
                   </div>
                 </div>
               ))}
-              <Link to="/parts">
+              <Link to="/inventory">
                 <Button variant="outline" className="w-full mt-4" size="sm">
-                  Order Parts
+                  Open Inventory
                 </Button>
               </Link>
             </div>

@@ -2,47 +2,54 @@ import { Outlet, useLocation, Link, useNavigate } from "react-router";
 import { useState, useEffect } from "react";
 import { signOut } from "firebase/auth";
 import {
-  LayoutDashboard,
   Wrench,
-  Package,
   ShoppingCart,
-  Users,
-  FileText,
-  TrendingUp,
   Settings,
   Menu,
   X,
   LogOut,
-  Boxes,
-  PanelLeftClose,
-  PanelLeftOpen,
   UserRound,
+  Palette,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { cn } from "../components/ui/utils";
 import { auth } from "../../firebase";
 import { useAuth } from "../auth/auth-context";
+import { logStaffActivity } from "../utils/staff-activity";
+import { appNavigation } from "../auth/permissions";
 
-const navigation = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Repairing", href: "/repairs", icon: Wrench },
-  { name: "Parts", href: "/parts", icon: Package },
-  { name: "GPU Inventory", href: "/inventory", icon: Boxes },
-  { name: "Customers", href: "/customers", icon: Users },
-  { name: "POS", href: "/pos", icon: ShoppingCart },
-  { name: "Billing", href: "/billing", icon: FileText },
-  { name: "Reports", href: "/reports", icon: FileText },
-  { name: "Finance", href: "/finance", icon: TrendingUp },
-  { name: "Profile & Password", href: "/profile", icon: UserRound },
+const themeColors = [
+  "#2F67EA",
+  "#10B981",
+  "#F97316",
+  "#EF4444",
+  "#8B5CF6",
+  "#EC4899",
+  "#14B8A6",
+  "#0EA5E9",
+  "#111827",
+  "#64748B",
 ];
+
+const applyAppColor = (color: string) => {
+  const root = document.documentElement;
+  root.style.setProperty("--primary", color);
+  root.style.setProperty("--ring", color);
+  root.style.setProperty("--sidebar-primary", color);
+  root.style.setProperty("--sidebar-ring", color);
+};
 
 export function RootLayout() {
   const { isAdmin, role, user } = useAuth();
+  const { hasPermission } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarHidden, setSidebarHidden] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [appColor, setAppColor] = useState("#2F67EA");
+  const [colorMenuOpen, setColorMenuOpen] = useState(false);
 
   useEffect(() => {
     const checkMobile = () => {
@@ -57,6 +64,18 @@ export function RootLayout() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
+  useEffect(() => {
+    const savedColor = localStorage.getItem("gamingtech.appColor") || "#2F67EA";
+    setAppColor(savedColor);
+    applyAppColor(savedColor);
+  }, []);
+
+  const changeAppColor = (color: string) => {
+    setAppColor(color);
+    localStorage.setItem("gamingtech.appColor", color);
+    applyAppColor(color);
+  };
+
   const isActive = (path: string) => {
     if (path === "/") {
       return location.pathname === "/";
@@ -65,61 +84,76 @@ export function RootLayout() {
   };
 
   const handleLogout = async () => {
+    logStaffActivity(user, role, "auth.logout", "User signed out");
+    if (user) sessionStorage.removeItem(`gamingtech.loginLogged.${user.uid}`);
     await signOut(auth);
     navigate("/login");
   };
+  const visibleNavigation = appNavigation.filter((item) => hasPermission(item.permission));
 
   return (
     <div className="min-h-screen bg-background">
       {/* Mobile Header */}
-      <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-secondary border-b border-sidebar-border">
+      <header className="lg:hidden fixed top-0 left-0 right-0 z-50 bg-card border-b border-border">
         <div className="flex items-center justify-between px-4 h-16">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="text-secondary-foreground"
+            className="text-foreground"
           >
             {sidebarOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
           <div className="flex items-center gap-2">
-            <img src="/gamingtech-logo.svg" alt="GamingTech.pk" className="h-9 w-28 rounded object-cover" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Wrench className="h-5 w-5" />
+            </div>
+            <div className="leading-tight">
+              <p className="font-bold">GamingTech.pk</p>
+              <p className="text-xs text-muted-foreground">Repair Management</p>
+            </div>
           </div>
-          <div className="w-10" />
+          <div className="relative">
+            <Button variant="ghost" size="icon" className="rounded-full" onClick={() => setColorMenuOpen((open) => !open)}>
+              <Palette className="h-5 w-5" />
+            </Button>
+            {colorMenuOpen && (
+              <div className="absolute right-0 top-11 z-[100] w-72 rounded-lg border bg-white p-4 text-foreground shadow-xl">
+                <p className="mb-3 text-sm font-semibold">Select App Color</p>
+                <div className="grid grid-cols-5 gap-2">
+                  {themeColors.map((color) => (
+                    <button key={color} type="button" onClick={() => { changeAppColor(color); setColorMenuOpen(false); }} className={cn("h-9 rounded-full border-2 transition hover:scale-105", appColor.toLowerCase() === color.toLowerCase() ? "border-foreground ring-2 ring-ring/30" : "border-transparent")} style={{ backgroundColor: color }} />
+                  ))}
+                </div>
+                <input type="color" value={appColor} onChange={(event) => changeAppColor(event.target.value)} className="mt-4 h-10 w-full cursor-pointer rounded border bg-white p-1" aria-label="Custom app color" />
+              </div>
+            )}
+          </div>
         </div>
       </header>
 
       {/* Sidebar */}
       <aside
         className={cn(
-          "fixed top-0 left-0 z-40 h-screen transition-transform bg-sidebar border-r border-sidebar-border",
-          isMobile ? "w-64" : sidebarCollapsed ? "w-20 lg:translate-x-0" : "w-64 lg:translate-x-0",
+          "fixed top-0 left-0 z-40 h-screen w-64 border-r border-border bg-white transition-transform",
+          sidebarHidden && !isMobile ? "-translate-x-full" : "lg:translate-x-0",
           sidebarOpen && isMobile ? "translate-x-0" : isMobile ? "-translate-x-full" : ""
         )}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className={cn("flex items-center gap-3 h-16 border-b border-sidebar-border", sidebarCollapsed ? "justify-center px-3" : "px-6")}>
-            {!sidebarCollapsed && (
-            <div className="flex min-w-0 flex-col">
-              <img src="/gamingtech-logo.svg" alt="GamingTech.pk" className="h-10 w-36 rounded-md object-cover" />
-              <span className="mt-1 text-xs text-sidebar-foreground/70">
-                {isAdmin ? "Admin Panel" : "Employee Panel"}
-              </span>
+          <div className="flex h-[72px] items-center gap-3 border-b border-border px-6">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm">
+              <Wrench className="h-5 w-5" />
             </div>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="hidden lg:inline-flex text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            >
-              {sidebarCollapsed ? <PanelLeftOpen className="h-5 w-5" /> : <PanelLeftClose className="h-5 w-5" />}
-            </Button>
+            <div className="flex min-w-0 flex-1 flex-col">
+              <span className="truncate text-lg font-bold text-foreground">GamingTech.pk</span>
+              <span className="text-xs text-muted-foreground">Repair Management</span>
+            </div>
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 overflow-y-auto py-6 px-3">
-            <div className="space-y-1">
-              {(isAdmin ? navigation : navigation.filter((item) => ["Dashboard", "Repairing", "Parts", "GPU Inventory", "Customers", "Profile & Password"].includes(item.name))).map((item) => {
+          <nav className="flex-1 overflow-y-auto px-3 py-7">
+            <div className="space-y-2">
+              {visibleNavigation.map((item) => {
                 const Icon = item.icon;
                 const active = isActive(item.href);
                 return (
@@ -128,21 +162,35 @@ export function RootLayout() {
                     to={item.href}
                     onClick={() => isMobile && setSidebarOpen(false)}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-                      sidebarCollapsed && "justify-center",
+                      "flex items-center gap-3 rounded-lg px-3 py-3 text-[15px] transition-colors",
                       active
-                        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-                        : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                        ? "bg-primary text-primary-foreground shadow-sm"
+                        : "text-foreground hover:bg-muted"
                     )}
-                    title={sidebarCollapsed ? item.name : undefined}
                   >
                     <Icon className="h-5 w-5" />
-                    {!sidebarCollapsed && <span className="font-medium">{item.name}</span>}
+                    <span className="font-medium">{item.name}</span>
                   </Link>
                 );
               })}
             </div>
           </nav>
+          <div className="border-t border-border p-4">
+              <button
+                type="button"
+                onClick={() => navigate("/profile")}
+                className="flex w-full items-center gap-3 rounded-lg p-2 text-left text-foreground hover:bg-muted"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted text-lg">
+                  <UserRound className="h-5 w-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{user?.displayName || "Admin User"}</p>
+                  <p className="truncate text-xs capitalize text-muted-foreground">{role || (isAdmin ? "Super Admin" : "Employee")}</p>
+                </div>
+                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </div>
         </div>
       </aside>
 
@@ -155,34 +203,67 @@ export function RootLayout() {
       )}
 
       {/* Desktop Header */}
-      <header className={cn("hidden lg:block fixed top-0 right-0 z-30 bg-card border-b border-border", sidebarCollapsed ? "left-20" : "left-64")}>
-        <div className="flex items-center justify-between px-6 h-16">
+      <header className={cn("hidden lg:block fixed top-0 right-0 z-30 border-b border-primary bg-primary text-primary-foreground", sidebarHidden ? "left-0" : "left-64")}>
+        <div className="flex h-[72px] items-center justify-between px-6">
           <div className="flex items-center gap-4">
-            <img src="/gamingtech-logo.svg" alt="GamingTech.pk" className="h-9 w-24 rounded object-cover" />
-            <h1 className="text-xl font-semibold text-foreground">
-              {location.pathname === "/" ? "GamingTech.pk Overview" : navigation.find((item) => isActive(item.href))?.name || "Dashboard"}
+            <Button variant="ghost" size="icon" onClick={() => setSidebarHidden(!sidebarHidden)} className="text-primary-foreground hover:bg-white/15 hover:text-primary-foreground" title={sidebarHidden ? "Show sidebar" : "Hide sidebar"}>
+              <Menu className="h-5 w-5" />
+            </Button>
+            <h1 className="text-xl font-bold text-primary-foreground">
+              {location.pathname === "/" ? "GamingTech.pk Overview" : appNavigation.find((item) => isActive(item.href))?.name || "Dashboard"}
             </h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <Button variant="ghost" size="icon" className="text-primary-foreground hover:bg-white/15 hover:text-primary-foreground" title="Change color" onClick={() => setColorMenuOpen((open) => !open)}>
+                <Palette className="h-5 w-5" />
+              </Button>
+              {colorMenuOpen && (
+                <div className="absolute right-0 top-12 z-[100] w-72 rounded-lg border bg-white p-4 text-foreground shadow-xl">
+                  <p className="mb-3 text-sm font-semibold">Select App Color</p>
+                  <div className="grid grid-cols-5 gap-2">
+                    {themeColors.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => { changeAppColor(color); setColorMenuOpen(false); }}
+                        className={cn(
+                          "h-9 rounded-full border-2 transition hover:scale-105",
+                          appColor.toLowerCase() === color.toLowerCase() ? "border-foreground ring-2 ring-ring/30" : "border-transparent"
+                        )}
+                        style={{ backgroundColor: color }}
+                        title={color}
+                      />
+                    ))}
+                  </div>
+                  <input type="color" value={appColor} onChange={(event) => changeAppColor(event.target.value)} className="mt-4 h-10 w-full cursor-pointer rounded border bg-white p-1" aria-label="Custom app color" />
+                </div>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => navigate("/profile")}
-              className="hidden xl:block text-right hover:text-primary"
+              className="hidden items-center gap-3 rounded-lg px-2 py-1 text-left hover:bg-white/15 xl:flex"
               title="Open profile and change password"
             >
-              <p className="text-sm font-medium">{user?.displayName || user?.email}</p>
-              <p className="text-xs capitalize text-muted-foreground">{role}</p>
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-primary-foreground">
+                <UserRound className="h-5 w-5" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold">{user?.displayName || "Admin User"}</p>
+                <p className="text-xs capitalize text-primary-foreground/75">{role || (isAdmin ? "Super Admin" : "Employee")}</p>
+              </div>
+              <ChevronDown className="h-4 w-4 text-primary-foreground/75" />
             </button>
-            <Button variant="outline" className="gap-2" onClick={handleLogout}>
+            <Button variant="ghost" size="icon" onClick={handleLogout} title="Logout" className="text-primary-foreground hover:bg-white/15 hover:text-primary-foreground">
                 <LogOut className="h-4 w-4" />
-                Logout
             </Button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className={cn("min-w-0 max-w-full overflow-x-hidden", sidebarCollapsed ? "lg:ml-20" : "lg:ml-64", isMobile ? "pt-16" : "lg:pt-16")}>
+      <main className={cn("min-w-0 max-w-full overflow-x-hidden", sidebarHidden ? "lg:ml-0" : "lg:ml-64", isMobile ? "pt-16" : "lg:pt-[72px]")}>
         <div className="min-w-0 max-w-full p-4 lg:p-6">
           <Outlet />
         </div>
@@ -191,19 +272,7 @@ export function RootLayout() {
       {/* Mobile Bottom Navigation */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-card border-t border-border">
         <div className="flex items-center justify-around px-2 py-2">
-          {(isAdmin ? [
-            { name: "Dashboard", href: "/", icon: LayoutDashboard },
-            { name: "Repairing", href: "/repairs", icon: Wrench },
-            { name: "GPU", href: "/inventory", icon: Boxes },
-            { name: "POS", href: "/pos", icon: ShoppingCart },
-            { name: "Profile", href: "/profile", icon: Settings },
-          ] : [
-            { name: "Dashboard", href: "/", icon: LayoutDashboard },
-            { name: "Repairing", href: "/repairs", icon: Wrench },
-            { name: "GPU", href: "/inventory", icon: Boxes },
-            { name: "Customers", href: "/customers", icon: Users },
-            { name: "Profile", href: "/profile", icon: Settings },
-          ]).map((item) => {
+          {visibleNavigation.filter((item) => ["Dashboard", "Repairs", "Inventory", "POS", "Profile"].includes(item.name)).slice(0, 5).map((item) => {
             const Icon = item.icon;
             const active = isActive(item.href);
             return (
