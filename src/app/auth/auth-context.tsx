@@ -25,6 +25,7 @@ const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || "admin@gamingtech.pk")
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const usersKey = "gamingtech.users";
+const deletedUsersKey = "gamingtech.deletedUsers";
 
 const readUsers = (): AppUser[] => {
   try {
@@ -36,6 +37,14 @@ const readUsers = (): AppUser[] => {
 
 const writeUsers = (users: AppUser[]) => localStorage.setItem(usersKey, JSON.stringify(users));
 
+const readDeletedUsers = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(deletedUsersKey) || "[]") as string[];
+  } catch {
+    return [];
+  }
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
@@ -46,6 +55,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(nextUser);
       if (nextUser?.email) {
         const email = nextUser.email.toLowerCase();
+        if (readDeletedUsers().includes(email)) {
+          auth.signOut();
+          setAppUser(null);
+          setLoading(false);
+          return;
+        }
         const users = readUsers();
         const existing = users.find((item) => item.email.toLowerCase() === email);
         const isSuperAdmin = email === adminEmail;

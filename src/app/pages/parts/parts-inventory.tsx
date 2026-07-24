@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { Search, Plus, AlertTriangle, Package, TrendingUp, Pencil, Trash2, RotateCcw, LayoutGrid, CalendarDays, Images, Cpu } from "lucide-react";
+import { Search, Plus, AlertTriangle, Package, TrendingUp, Pencil, Trash2, CalendarDays } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -45,9 +45,19 @@ type InventoryItem = {
   sellingPrice: number;
   supplier: string;
   location: string;
+  status?: string;
+  progress?: number;
+  timeline?: { date: string; status: string; note: string; progress: number }[];
 };
 
 const initialItems: InventoryItem[] = [];
+const statusProgress: Record<string, number> = {
+  "Received": 10,
+  "Work Started": 25,
+  "In Progress": 50,
+  "Testing": 75,
+  "Completed": 100,
+};
 
 export function PartsInventory() {
   const { hasPermission } = useAuth();
@@ -69,6 +79,8 @@ export function PartsInventory() {
     sellingPrice: "0",
     supplier: "",
     location: "",
+    status: "Work Started",
+    progress: "25",
   });
 
   const openAddDialog = () => {
@@ -84,6 +96,8 @@ export function PartsInventory() {
       sellingPrice: "0",
       supplier: "",
       location: "",
+      status: "Work Started",
+      progress: "25",
     });
     setDialogOpen(true);
   };
@@ -101,6 +115,8 @@ export function PartsInventory() {
       sellingPrice: String(part.sellingPrice),
       supplier: part.supplier,
       location: part.location,
+      status: part.status ?? "Work Started",
+      progress: String(part.progress ?? statusProgress[part.status ?? "Work Started"] ?? 25),
     });
     setDialogOpen(true);
   };
@@ -119,7 +135,17 @@ export function PartsInventory() {
       sellingPrice: Number(formData.sellingPrice),
       supplier: formData.supplier,
       location: formData.location,
+      status: formData.status,
+      progress: Math.max(0, Math.min(Number(formData.progress), 100)),
+      timeline: editingPart?.timeline ?? [],
     };
+    const timelineNote = editingPart
+      ? `Status updated to ${nextPart.status}. Progress ${nextPart.progress}%.`
+      : "Inventory item added and work timeline started.";
+    const lastTimeline = editingPart?.timeline?.[0];
+    nextPart.timeline = !editingPart || lastTimeline?.status !== nextPart.status || lastTimeline?.progress !== nextPart.progress
+      ? [{ date: new Date().toISOString(), status: nextPart.status ?? "Work Started", progress: nextPart.progress ?? 25, note: timelineNote }, ...(editingPart?.timeline ?? [])]
+      : editingPart.timeline;
 
     if (editingPart && nextPart.stock !== editingPart.stock) {
       setStockAdjustments((current) => [{ id: `ADJ-${Date.now()}-${nextPart.id}`, partId: nextPart.id, partName: nextPart.name, date: new Date().toISOString(), quantityChange: nextPart.stock - editingPart.stock, previousStock: editingPart.stock, newStock: nextPart.stock, reason: "manual", reference: "Adjusted from product editor" }, ...current]);
@@ -135,14 +161,6 @@ export function PartsInventory() {
 
   const deletePart = (id: string) => {
     setParts((current) => current.filter((part) => part.id !== id));
-  };
-
-  const reorderPart = (part: InventoryItem) => {
-    const suggested = Math.max(part.reorderLevel * 2 - part.stock, 1);
-    const quantity = Number(window.prompt(`How many ${part.unit} of ${part.name} were received?`, String(suggested)));
-    if (!Number.isFinite(quantity) || quantity <= 0) return;
-    setParts((current) => current.map((item) => item.id === part.id ? { ...item, stock: item.stock + quantity } : item));
-    setStockAdjustments((current) => [{ id: `ADJ-${Date.now()}-${part.id}`, partId: part.id, partName: part.name, date: new Date().toISOString(), quantityChange: quantity, previousStock: part.stock, newStock: part.stock + quantity, reason: "stock-receipt", reference: "Inventory receipt" }, ...current]);
   };
 
   const adjustStock = (part: InventoryItem) => {
@@ -244,26 +262,11 @@ export function PartsInventory() {
           <CardTitle>Inventory Tools</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Link to="/inventory/gpu" className="rounded-lg border bg-card p-4 transition hover:bg-muted">
-              <Cpu className="mb-3 h-6 w-6 text-primary" />
-              <p className="font-semibold">GPU Records</p>
-              <p className="text-sm text-muted-foreground">Track GPU serials and customers</p>
-            </Link>
-            <Link to="/inventory/status-board" className="rounded-lg border bg-card p-4 transition hover:bg-muted">
-              <LayoutGrid className="mb-3 h-6 w-6 text-success" />
-              <p className="font-semibold">Status Board</p>
-              <p className="text-sm text-muted-foreground">View GPU status groups</p>
-            </Link>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <Link to="/inventory/timeline" className="rounded-lg border bg-card p-4 transition hover:bg-muted">
               <CalendarDays className="mb-3 h-6 w-6 text-warning" />
               <p className="font-semibold">Timeline</p>
-              <p className="text-sm text-muted-foreground">Track inventory history</p>
-            </Link>
-            <Link to="/inventory/gallery" className="rounded-lg border bg-card p-4 transition hover:bg-muted">
-              <Images className="mb-3 h-6 w-6 text-accent" />
-              <p className="font-semibold">Gallery</p>
-              <p className="text-sm text-muted-foreground">View customer media</p>
+              <p className="text-sm text-muted-foreground">Track item status and work progress</p>
             </Link>
           </div>
         </CardContent>
@@ -351,11 +354,15 @@ export function PartsInventory() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={isLowStock ? "destructive" : "secondary"}
-                        >
-                          {isLowStock ? "Low Stock" : "In Stock"}
-                        </Badge>
+                        <div className="min-w-[150px] space-y-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <Badge variant={(part.progress ?? 25) >= 100 ? "default" : "secondary"}>
+                              {part.status ?? "Work Started"}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">{part.progress ?? 25}%</span>
+                          </div>
+                          <Progress value={part.progress ?? 25} className="h-1.5" />
+                        </div>
                       </TableCell>
                       <TableCell>₨{part.costPrice.toLocaleString()}</TableCell>
                       <TableCell>₨{part.sellingPrice.toLocaleString()}</TableCell>
@@ -367,9 +374,6 @@ export function PartsInventory() {
                             View Details
                             </Button>
                           </Link>
-                          {hasPermission("inventory.manage") && <Button variant={isLowStock ? "default" : "outline"} size="sm" onClick={() => reorderPart(part)}>
-                            <RotateCcw className="mr-2 h-4 w-4" /> Reorder
-                          </Button>}
                           {hasPermission("inventory.manage") && <Button variant="outline" size="sm" onClick={() => adjustStock(part)}>
                             <TrendingUp className="mr-2 h-4 w-4" /> Adjust Stock
                           </Button>}
@@ -413,24 +417,12 @@ export function PartsInventory() {
                 <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}><SelectTrigger id="partCategory"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="GPU">GPU</SelectItem><SelectItem value="Gaming Parts">Gaming Parts</SelectItem><SelectItem value="PC Parts">PC Parts</SelectItem><SelectItem value="Laptop Parts">Laptop Parts</SelectItem><SelectItem value="Mobile Parts">Mobile Parts</SelectItem><SelectItem value="Accessories">Accessories</SelectItem><SelectItem value="POS Products">POS Products</SelectItem></SelectContent></Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="partSupplier">Supplier</Label>
-                <Input id="partSupplier" value={formData.supplier} onChange={(event) => setFormData({ ...formData, supplier: event.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="partStock">Stock</Label>
-                <Input id="partStock" type="number" value={formData.stock} onChange={(event) => setFormData({ ...formData, stock: event.target.value })} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="partReorder">Reorder Level</Label>
-                <Input id="partReorder" type="number" value={formData.reorderLevel} onChange={(event) => setFormData({ ...formData, reorderLevel: event.target.value })} required />
+                <Label htmlFor="partCustomer">Customer Name</Label>
+                <Input id="partCustomer" value={formData.supplier} onChange={(event) => setFormData({ ...formData, supplier: event.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="partCost">Cost Price</Label>
                 <Input id="partCost" type="number" value={formData.costPrice} onChange={(event) => setFormData({ ...formData, costPrice: event.target.value })} required />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="partSale">Selling Price</Label>
-                <Input id="partSale" type="number" value={formData.sellingPrice} onChange={(event) => setFormData({ ...formData, sellingPrice: event.target.value })} required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="partUnit">Unit</Label>
@@ -439,6 +431,19 @@ export function PartsInventory() {
               <div className="space-y-2">
                 <Label htmlFor="partLocation">Location</Label>
                 <Input id="partLocation" value={formData.location} onChange={(event) => setFormData({ ...formData, location: event.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="partStatus">Status</Label>
+                <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value, progress: String(statusProgress[value] ?? Number(formData.progress)) })}>
+                  <SelectTrigger id="partStatus"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(statusProgress).map((status) => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="partProgress">Work Complete (%)</Label>
+                <Input id="partProgress" type="number" min="0" max="100" value={formData.progress} onChange={(event) => setFormData({ ...formData, progress: event.target.value })} required />
               </div>
             </div>
             <DialogFooter>

@@ -11,8 +11,6 @@ import { RepairDetails } from "./pages/repairs/repair-details";
 import { PartsInventory } from "./pages/parts/parts-inventory";
 import { PartDetails } from "./pages/parts/part-details";
 import { InventoryDashboard } from "./pages/inventory/inventory-dashboard";
-import { GpuGallery } from "./pages/inventory/gpu-gallery";
-import { GpuStatusBoard } from "./pages/inventory/gpu-status-board";
 import { GpuTimeline } from "./pages/inventory/gpu-timeline";
 import { CustomerDirectory } from "./pages/customers/customer-directory";
 import { CustomerProfile } from "./pages/customers/customer-profile";
@@ -49,10 +47,10 @@ export const router = createBrowserRouter([
       { path: "customers/:id", element: <PermissionGuard permission="customers.view" />, children: [{ index: true, Component: CustomerProfile }] },
       { path: "inventory", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: PartsInventory }] },
       { path: "inventory/gpu", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: InventoryDashboard }] },
-      { path: "inventory/:id", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: PartDetails }] },
-      { path: "inventory/status-board", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: GpuStatusBoard }] },
       { path: "inventory/timeline", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: GpuTimeline }] },
-      { path: "inventory/gallery", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: GpuGallery }] },
+      { path: "inventory/status-board", element: <Navigate to="/inventory" replace /> },
+      { path: "inventory/gallery", element: <Navigate to="/inventory" replace /> },
+      { path: "inventory/:id", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: PartDetails }] },
       { path: "profile", element: <PermissionGuard permission="profile.view" />, children: [{ index: true, Component: UserProfile }] },
       { path: "pos", element: <PermissionGuard permission="sales.view" />, children: [{ index: true, Component: POSHome }] },
       { path: "pos/sale", element: <PermissionGuard permission="sales.create" />, children: [{ index: true, Component: NewSale }] },

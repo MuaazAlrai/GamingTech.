@@ -2,7 +2,6 @@ import {
   Boxes,
   FileText,
   LayoutDashboard,
-  Settings,
   ShoppingCart,
   TrendingUp,
   UserCog,
@@ -105,7 +104,6 @@ export const appNavigation = [
   { name: "Reports", href: "/reports", icon: FileText, permission: "reports.view" as PermissionKey },
   { name: "Finance", href: "/finance", icon: TrendingUp, permission: "finance.view" as PermissionKey },
   { name: "Users", href: "/users", icon: UserCog, permission: "users.view" as PermissionKey },
-  { name: "Settings", href: "/settings", icon: Settings, permission: "settings.view" as PermissionKey },
   { name: "Profile", href: "/profile", icon: UserRound, permission: "profile.view" as PermissionKey },
 ];
 

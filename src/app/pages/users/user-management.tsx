@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { sendPasswordResetEmail } from "firebase/auth";
-import { Edit, KeyRound, Plus, ShieldCheck, UserX } from "lucide-react";
+import { createUserWithEmailAndPassword, getAuth, sendPasswordResetEmail, signOut, updateProfile } from "firebase/auth";
+import { FirebaseError, getApp, getApps, initializeApp } from "firebase/app";
+import { Edit, KeyRound, Plus, ShieldCheck, Trash2, UserPlus, UserX } from "lucide-react";
 import { toast } from "sonner";
-import { auth } from "../../../firebase";
+import { auth, firebaseApp } from "../../../firebase";
 import { useAuth } from "../../auth/auth-context";
 import { permissionModules } from "../../auth/permissions";
 import type { PermissionKey } from "../../auth/permissions";
@@ -30,6 +31,41 @@ const emptyForm = {
   permissions: [] as PermissionKey[],
 };
 
+const deletedUsersKey = "gamingtech.deletedUsers";
+
+const readDeletedUsers = (): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(deletedUsersKey) || "[]") as string[];
+  } catch {
+    return [];
+  }
+};
+
+const blockDeletedLogin = (email: string) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  localStorage.setItem(deletedUsersKey, JSON.stringify(Array.from(new Set([...readDeletedUsers(), normalizedEmail]))));
+};
+
+const unblockDeletedLogin = (email: string) => {
+  const normalizedEmail = email.trim().toLowerCase();
+  localStorage.setItem(deletedUsersKey, JSON.stringify(readDeletedUsers().filter((item) => item !== normalizedEmail)));
+};
+
+const adminCreateAppName = "admin-user-creation";
+const adminCreateApp = getApps().some((app) => app.name === adminCreateAppName)
+  ? getApp(adminCreateAppName)
+  : initializeApp(firebaseApp.options, adminCreateAppName);
+const adminCreateAuth = getAuth(adminCreateApp);
+
+const getFirebaseErrorMessage = (error: unknown) => {
+  if (error instanceof FirebaseError) {
+    if (error.code === "auth/email-already-in-use") return "This email already exists in Firebase Authentication.";
+    if (error.code === "auth/weak-password") return "Password must be at least 6 characters.";
+    if (error.code === "auth/invalid-email") return "Please enter a valid email address.";
+  }
+  return error instanceof Error ? error.message : "Unable to create Firebase login account.";
+};
+
 export function UserManagement() {
   const { user, isAdmin, hasPermission } = useAuth();
   const [users, setUsers] = usePersistentState<AppUser[]>("gamingtech.users", []);
@@ -38,6 +74,7 @@ export function UserManagement() {
   const [form, setForm] = useState(emptyForm);
   const canCreate = hasPermission("users.create");
   const canEdit = hasPermission("users.edit");
+  const canDelete = hasPermission("users.delete");
   const canAssign = hasPermission("users.assignPermissions");
   const canReset = hasPermission("users.resetPassword");
   const sortedUsers = useMemo(() => [...users].sort((a, b) => Number(Boolean(b.isSuperAdmin)) - Number(Boolean(a.isSuperAdmin)) || a.fullName.localeCompare(b.fullName)), [users]);
@@ -80,7 +117,7 @@ export function UserManagement() {
     }));
   };
 
-  const saveUser = (event: React.FormEvent) => {
+  const saveUser = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editing && !canCreate) return toast.error("You do not have permission to create users.");
     if (editing && !canEdit) return toast.error("You do not have permission to edit users.");
@@ -90,9 +127,24 @@ export function UserManagement() {
     if (editing?.isSuperAdmin && editing.email.toLowerCase() === user?.email?.toLowerCase() && form.status !== "active") {
       return toast.error("Super Admin cannot deactivate their own account.");
     }
+    if (!editing && form.password.length < 6) return toast.error("Password must be at least 6 characters.");
+
+    let firebaseUid = editing?.uid;
+    if (!editing) {
+      try {
+        const credential = await createUserWithEmailAndPassword(adminCreateAuth, email, form.password);
+        firebaseUid = credential.user.uid;
+        await updateProfile(credential.user, { displayName: form.fullName.trim(), photoURL: form.photoUrl.trim() || undefined });
+        await signOut(adminCreateAuth);
+      } catch (error) {
+        return toast.error(getFirebaseErrorMessage(error));
+      }
+    }
+    unblockDeletedLogin(email);
+
     const nextUser: AppUser = {
-      id: editing?.id ?? `USR-${Date.now()}`,
-      uid: editing?.uid,
+      id: editing?.id ?? firebaseUid ?? `USR-${Date.now()}`,
+      uid: firebaseUid,
       fullName: form.fullName.trim(),
       username: form.username.trim(),
       email,
@@ -107,7 +159,7 @@ export function UserManagement() {
     };
     setUsers((current) => editing ? current.map((item) => item.id === editing.id ? nextUser : item) : [nextUser, ...current]);
     setOpen(false);
-    toast.success(editing ? "User updated." : "User profile created. Create the Firebase login account from Authentication if needed.");
+    toast.success(editing ? "User updated." : "User created and Firebase login account is ready.");
   };
 
   const setStatus = (target: AppUser, active: boolean) => {
@@ -118,8 +170,40 @@ export function UserManagement() {
 
   const resetPassword = async (target: AppUser) => {
     if (!canReset) return;
-    await sendPasswordResetEmail(auth, target.email);
-    toast.success(`Password reset email sent to ${target.email}.`);
+    try {
+      await sendPasswordResetEmail(auth, target.email);
+      toast.success(`Password reset email sent to ${target.email}.`);
+    } catch (error) {
+      toast.error(getFirebaseErrorMessage(error));
+    }
+  };
+
+  const createFirebaseLogin = async (target: AppUser) => {
+    if (!canCreate) return;
+    const password = window.prompt(`Set login password for ${target.email}. Minimum 6 characters.`);
+    if (password === null) return;
+    if (password.length < 6) return toast.error("Password must be at least 6 characters.");
+
+    try {
+      const credential = await createUserWithEmailAndPassword(adminCreateAuth, target.email, password);
+      await updateProfile(credential.user, { displayName: target.fullName, photoURL: target.photoUrl || undefined });
+      await signOut(adminCreateAuth);
+      setUsers((current) => current.map((item) => item.id === target.id ? { ...item, id: credential.user.uid, uid: credential.user.uid } : item));
+      toast.success(`Firebase login created for ${target.email}.`);
+    } catch (error) {
+      toast.error(getFirebaseErrorMessage(error));
+    }
+  };
+
+  const deleteUser = (target: AppUser) => {
+    if (!canDelete) return;
+    if (target.isSuperAdmin) return toast.error("Super Admin cannot be deleted.");
+    if (target.email.toLowerCase() === user?.email?.toLowerCase()) return toast.error("You cannot delete your own account.");
+    if (!window.confirm(`Delete ${target.fullName}? This will remove the user from this app and block this email from logging in here.`)) return;
+
+    blockDeletedLogin(target.email);
+    setUsers((current) => current.filter((item) => item.id !== target.id));
+    toast.success(`${target.fullName} deleted.`);
   };
 
   return (
@@ -160,8 +244,10 @@ export function UserManagement() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         {canEdit && <Button variant="outline" size="icon" onClick={() => openEdit(target)}><Edit className="h-4 w-4" /></Button>}
+                        {canCreate && !target.uid && <Button variant="outline" size="icon" title="Create Firebase login" onClick={() => createFirebaseLogin(target)}><UserPlus className="h-4 w-4" /></Button>}
                         {canReset && <Button variant="outline" size="icon" onClick={() => resetPassword(target)}><KeyRound className="h-4 w-4" /></Button>}
                         {canEdit && <Button variant="outline" size="icon" onClick={() => setStatus(target, target.status !== "active")} disabled={target.isSuperAdmin && target.email.toLowerCase() === user?.email?.toLowerCase()}><UserX className="h-4 w-4" /></Button>}
+                        {canDelete && <Button variant="destructive" size="icon" onClick={() => deleteUser(target)} disabled={target.isSuperAdmin || target.email.toLowerCase() === user?.email?.toLowerCase()}><Trash2 className="h-4 w-4" /></Button>}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -180,7 +266,7 @@ export function UserManagement() {
               <div><Label>Full Name</Label><Input value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} required /></div>
               <div><Label>Username</Label><Input value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} required /></div>
               <div><Label>Email</Label><Input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required disabled={Boolean(editing)} /></div>
-              <div><Label>Password</Label><Input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder={editing ? "Use reset password" : "For admin record"} /></div>
+              <div><Label>Password</Label><Input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder={editing ? "Use reset password" : "Minimum 6 characters"} required={!editing} /></div>
               <div><Label>Phone Number</Label><Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></div>
               <div><Label>Designation</Label><Input value={form.designation} onChange={(event) => setForm({ ...form, designation: event.target.value })} /></div>
               <div className="md:col-span-2"><Label>Profile Photo URL</Label><Input value={form.photoUrl} onChange={(event) => setForm({ ...form, photoUrl: event.target.value })} /></div>

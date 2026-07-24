@@ -68,14 +68,17 @@ export function printRepairLabel(ticket: RepairTicket) {
     <div class="copy-head"><div><h1>GamingTech.pk</h1><div>Customer Repair Copy</div></div><div class="copy-job">${escapeHtml(jobNumber)}</div></div>
     <div class="copy-grid"><span class="copy-key">Customer</span><span>${escapeHtml(ticket.customer)}</span></div>
     <div class="copy-grid"><span class="copy-key">Phone</span><span>${escapeHtml(ticket.customerPhone)}</span></div>
-    <div class="copy-grid"><span class="copy-key">Job Number</span><span><b>${escapeHtml(jobNumber)}</b></span></div>
-    <div class="copy-grid"><span class="copy-key">Ticket Number</span><span>${escapeHtml(ticketNumber)}</span></div>
+    <div class="copy-grid"><span class="copy-key">Ticket Number</span><span><b>${escapeHtml(ticketNumber)}</b> - Device number</span></div>
+    <div class="copy-grid"><span class="copy-key">Job Number</span><span><b>${escapeHtml(jobNumber)}</b> - Customer job</span></div>
     <div class="copy-grid"><span class="copy-key">Device</span><span>${escapeHtml(ticket.device)}</span></div>
+    <div class="copy-grid"><span class="copy-key">Link</span><span>${escapeHtml(ticket.device)} belongs to ${escapeHtml(ticket.customer)} and work is in progress.</span></div>
     <div class="copy-grid"><span class="copy-key">Issue</span><span>${escapeHtml(ticket.issue)}</span></div>
     <div class="copy-grid"><span class="copy-key">Date</span><span>${escapeHtml(ticket.createdAt)}</span></div>
   </section>
   <main class="label" id="label">
     <div class="head"><div><div class="brand">GamingTech.pk</div><div class="tagline">DEVICE LABEL / SHOP TICKET</div></div><div><div class="ticket">${escapeHtml(ticketNumber)}</div><div class="repair">${escapeHtml(jobNumber)}</div></div></div>
+    <div class="row"><span class="key">Ticket</span><span class="value">${escapeHtml(ticketNumber)}</span></div>
+    <div class="row"><span class="key">Job</span><span class="value">${escapeHtml(jobNumber)}</span></div>
     <div class="row"><span class="key">Customer</span><span class="value">${escapeHtml(ticket.customer)}</span></div>
     <div class="row"><span class="key">Phone</span><span class="value">${escapeHtml(ticket.customerPhone)}</span></div>
     <div class="row"><span class="key">Device</span><span class="value">${escapeHtml(ticket.device)}</span></div>
