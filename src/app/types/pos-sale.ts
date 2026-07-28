@@ -5,6 +5,11 @@ export type PosSaleItem = {
   costPrice?: number;
   quantity: number;
   discount?: number;
+  itemType?: "repair_service" | "labour" | "diagnosis" | "inspection" | "replacement_part" | "software" | "cleaning" | "other";
+  partCode?: string;
+  warranty?: string;
+  notes?: string;
+  repairPartId?: string;
 };
 
 export type PosSale = {
@@ -27,6 +32,14 @@ export type PosSale = {
   cashierName?: string;
   cashierRole?: "admin" | "employee";
   shiftId?: string;
+  repairId?: string;
+  deviceNumber?: string;
+  invoiceType?: "repair" | "sale";
+  repairStatus?: string;
+  repairProgress?: number;
+  diagnosis?: string;
+  repairWorkPerformed?: string;
+  customerNote?: string;
   status?: "completed" | "cancelled" | "refunded";
   updatedAt?: string;
   cancelledAt?: string;

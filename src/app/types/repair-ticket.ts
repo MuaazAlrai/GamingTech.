@@ -3,6 +3,7 @@ export type RepairTicket = {
   repairId: string;
   jobNumber?: string;
   ticketNumber?: string;
+  invoiceNumber?: string;
   openStatus: string;
   customer: string;
   device: string;
@@ -31,8 +32,15 @@ export type RepairTicket = {
   customerId?: string;
   customerEmail?: string;
   customerAddress?: string;
+  physicalDeviceId?: string;
+  currentTechnicianId?: string;
   timeline?: RepairTimelineEvent[];
+  statusHistory?: RepairStatusHistoryEntry[];
+  technicianAssignmentHistory?: RepairTechnicianAssignment[];
   partsUsed?: RepairPartUsed[];
+  repairNotes?: RepairNote[];
+  payments?: RepairPayment[];
+  invoiceItems?: RepairInvoiceItem[];
 };
 
 export type RepairTimelineEvent = {
@@ -50,4 +58,51 @@ export type RepairPartUsed = {
   name: string;
   quantity: number;
   cost: number;
+};
+
+export type RepairStatusHistoryEntry = {
+  id: string;
+  date: string;
+  status: string;
+  label?: string;
+  note?: string;
+  technician?: string;
+  technicianId?: string;
+  progress?: number;
+};
+
+export type RepairTechnicianAssignment = {
+  id: string;
+  date: string;
+  technician: string;
+  technicianId?: string;
+  assignedBy?: string;
+  note?: string;
+};
+
+export type RepairNote = {
+  id: string;
+  date: string;
+  note: string;
+  author?: string;
+  visibility?: "internal" | "customer";
+};
+
+export type RepairPayment = {
+  id: string;
+  date: string;
+  amount: number;
+  method: string;
+  note?: string;
+  cashierId?: string;
+  cashierName?: string;
+};
+
+export type RepairInvoiceItem = {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  type?: "labour" | "part" | "other";
+  partId?: string;
 };

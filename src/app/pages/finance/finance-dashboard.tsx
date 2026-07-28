@@ -49,7 +49,7 @@ export function FinanceDashboard() {
       expense: saleCost(sale),
     })),
     ...repairs.filter((ticket) => ["completed", "delivered"].includes(ticket.status)).map((ticket) => ({
-      id: ticket.ticketNumber || ticket.id,
+      id: ticket.invoiceNumber || ticket.ticketNumber || ticket.id,
       date: ticket.createdAt,
       source: "Repair",
       description: `${ticket.customer} - ${ticket.device}`,

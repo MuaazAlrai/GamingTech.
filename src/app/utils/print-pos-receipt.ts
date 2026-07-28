@@ -29,7 +29,7 @@ export function printPosReceipt(sale: PosSale) {
 <html>
 <head>
   <meta charset="utf-8">
-  <title>${safe(sale.id)} Sale Invoice</title>
+  <title>${safe(sale.id)} Repair Invoice</title>
   <style>
     @page { size: A4; margin: 12mm; }
     * { box-sizing: border-box; }
@@ -68,18 +68,19 @@ export function printPosReceipt(sale: PosSale) {
     <div class="top">
       <div class="brand">
         <h1>GamingTech.pk</h1>
-        <p>Sale Invoice</p>
+        <p>Repair Invoice</p>
       </div>
       <div class="meta">
-        <div><b>Invoice:</b> ${safe(sale.id)}</div>
+        <div><b>Repair Invoice:</b> ${safe(sale.id)}</div>
+        <div><b>Device:</b> ${safe(sale.deviceNumber)}</div>
         <div><b>Date:</b> ${safe(new Date(sale.date).toLocaleString())}</div>
         <div><b>Cashier:</b> ${safe(sale.cashierName ?? "Staff")}</div>
       </div>
     </div>
     <section class="section party">
       <div class="box">
-        <h3>Party / Customer</h3>
-        <p><b>${safe(sale.customerName ?? "Walk-in Customer")}</b></p>
+        <h3>Customer</h3>
+        <p><b>${safe(sale.customerName ?? "Customer")}</b></p>
         <p>${safe(sale.customerPhone || "No phone")}</p>
         <p>${safe(sale.customerAddress || "No address")}</p>
       </div>
@@ -93,7 +94,7 @@ export function printPosReceipt(sale: PosSale) {
     <section class="section">
       <table>
         <thead>
-          <tr><th class="center">#Sr</th><th>Code</th><th>Name</th><th class="center">Qty</th><th class="right">Sale Price</th><th class="right">Amount</th></tr>
+          <tr><th class="center">#</th><th>Type / Code</th><th>Repair Item</th><th class="center">Qty</th><th class="right">Unit Price</th><th class="right">Amount</th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
@@ -106,7 +107,7 @@ export function printPosReceipt(sale: PosSale) {
         <tr><td>Balance</td><td class="right">${money(balance)}</td></tr>
       </table>
     </section>
-    <div class="footer">Thank you for shopping with GamingTech.pk</div>
+    <div class="footer">Thank you for choosing GamingTech.pk for your repair.</div>
   </main>
   <script>window.addEventListener('load', () => setTimeout(() => window.print(), 180));<\/script>
 </body>

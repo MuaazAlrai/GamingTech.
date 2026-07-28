@@ -23,7 +23,7 @@ const navItems = [
   { icon: Home, label: "Dashboard", path: "/" },
   { icon: Wrench, label: "Repairs", path: "/repairs", badge: 12 },
   { icon: Package, label: "Inventory", path: "/inventory" },
-  { icon: ShoppingCart, label: "POS", path: "/pos" },
+  { icon: ShoppingCart, label: "Repair POS", path: "/pos" },
   { icon: Users, label: "Customers", path: "/customers" },
 ];
 
@@ -31,7 +31,7 @@ const mobileNavItems = [
   { icon: Home, label: "Dashboard", path: "/" },
   { icon: Wrench, label: "Repairs", path: "/repairs" },
   { icon: Package, label: "Inventory", path: "/inventory" },
-  { icon: ShoppingCart, label: "POS", path: "/pos" },
+  { icon: ShoppingCart, label: "Repair POS", path: "/pos" },
   { icon: User, label: "Profile", path: "/profile" },
 ];
 

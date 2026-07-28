@@ -54,7 +54,7 @@ export function BillingDashboard() {
     const paid = Math.min(ticket.amount, extraPaid);
     const pending = Math.max(0, ticket.amount - paid);
     return {
-      id: ticket.ticketNumber || ticket.id,
+      id: ticket.invoiceNumber || ticket.ticketNumber || ticket.id,
       date: ticket.createdAt,
       customer: ticket.customer,
       type: "Repair",

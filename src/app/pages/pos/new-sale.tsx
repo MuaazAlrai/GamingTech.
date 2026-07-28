@@ -1,339 +1,272 @@
 import { useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router";
-import { ArrowLeft, Plus, ReceiptText, Search, ShoppingCart, Trash2 } from "lucide-react";
+import { Link, useNavigate, useSearchParams } from "react-router";
+import { ArrowLeft, FileText, Plus, Printer, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
-import { Card, CardContent } from "../../components/ui/card";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Textarea } from "../../components/ui/textarea";
+import { useAuth } from "../../auth/auth-context";
 import { usePersistentState } from "../../hooks/use-persistent-state";
-import type { HeldPosSale, PosSale, PosSaleItem } from "../../types/pos-sale";
+import { generateInvoiceNumber, valueExists } from "../../services/number-generation";
 import type { Customer } from "../../types/customer";
 import type { Part, StockAdjustment } from "../../types/part";
+import type { PosSale, PosSaleItem } from "../../types/pos-sale";
+import type { RepairTicket } from "../../types/repair-ticket";
 import type { CashShift } from "../../types/staff";
-import { useAuth } from "../../auth/auth-context";
 import { logStaffActivity } from "../../utils/staff-activity";
 import { printPosReceipt } from "../../utils/print-pos-receipt";
+import { getRepairDueState, labelForRepairStatus, progressForRepairStatus, repairStatusOptions } from "../../utils/repair-status";
 
 const money = (value: number) => `Rs ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
+const itemTypeLabels: Record<NonNullable<PosSaleItem["itemType"]>, string> = {
+  repair_service: "Repair Service",
+  labour: "Labour Charge",
+  diagnosis: "Diagnosis Fee",
+  inspection: "Inspection Fee",
+  replacement_part: "Replacement Part",
+  software: "Software Service",
+  cleaning: "Cleaning Service",
+  other: "Other Charge",
+};
+
+const serviceOptions = [
+  "HDMI Port Repair",
+  "Charging Port Replacement",
+  "Power Supply Repair",
+  "Screen Replacement",
+  "Motherboard Repair",
+  "Software Installation",
+  "Device Cleaning",
+  "Data Recovery",
+  "Controller Repair",
+  "General Labour",
+];
+
+const normalize = (value: unknown) => String(value ?? "").toLowerCase();
+
 export function NewSale() {
   const navigate = useNavigate();
-  const { user, role, isAdmin, hasPermission } = useAuth();
+  const { user, role, hasPermission } = useAuth();
   const [searchParams] = useSearchParams();
-  const editSaleId = searchParams.get("edit");
-  const [products, setProducts] = usePersistentState<Part[]>("gamingtech.parts", []);
+  const editInvoiceId = searchParams.get("edit");
+  const [repairs, setRepairs] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
+  const [customers] = usePersistentState<Customer[]>("gamingtech.customers", []);
+  const [parts, setParts] = usePersistentState<Part[]>("gamingtech.parts", []);
   const [, setStockAdjustments] = usePersistentState<StockAdjustment[]>("gamingtech.stockAdjustments", []);
-  const [sales, setSales] = usePersistentState<PosSale[]>("gamingtech.posSales", []);
-  const [heldSales, setHeldSales] = usePersistentState<HeldPosSale[]>("gamingtech.heldPosSales", []);
-  const [customers, setCustomers] = usePersistentState<Customer[]>("gamingtech.customers", []);
+  const [invoices, setInvoices] = usePersistentState<PosSale[]>("gamingtech.posSales", []);
   const [shifts] = usePersistentState<CashShift[]>("gamingtech.cashShifts", []);
   const activeShift = shifts.find((shift) => shift.userId === user?.uid && shift.status === "open");
-  const saleBeingEdited = useMemo(() => sales.find((sale) => sale.id === editSaleId), [editSaleId, sales]);
-  const [cart, setCart] = useState<PosSaleItem[]>(() => saleBeingEdited?.items.map((item) => ({ ...item })) ?? []);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [selectedProductId, setSelectedProductId] = useState("choose");
-  const [discount, setDiscount] = useState(() => saleBeingEdited?.discount ?? 0);
-  const [taxRate, setTaxRate] = useState(() => saleBeingEdited?.taxRate ?? (saleBeingEdited ? 17 : 0));
-  const [paymentMethod, setPaymentMethod] = useState(() => saleBeingEdited?.paymentMethod ?? "Cash");
-  const [customerId, setCustomerId] = useState(() => saleBeingEdited?.customerId ?? "walk-in");
-  const [paidAmount, setPaidAmount] = useState(() => saleBeingEdited?.paidAmount ?? 0);
-  const [invoiceNumber, setInvoiceNumber] = useState(() => saleBeingEdited?.id ?? "");
-  const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
-  const [customerForm, setCustomerForm] = useState({ name: "", phone: "", address: "" });
-  const [quickItemDialogOpen, setQuickItemDialogOpen] = useState(false);
-  const [quickItemForm, setQuickItemForm] = useState({ name: "", price: "", costPrice: "0", quantity: "1" });
+  const invoiceBeingEdited = useMemo(() => invoices.find((invoice) => invoice.id === editInvoiceId), [editInvoiceId, invoices]);
+  const initialRepair = useMemo(() => repairs.find((repair) => repair.id === invoiceBeingEdited?.repairId || repair.invoiceNumber === editInvoiceId), [invoiceBeingEdited?.repairId, editInvoiceId, repairs]);
+  const [repairSearch, setRepairSearch] = useState("");
+  const [selectedRepairId, setSelectedRepairId] = useState(initialRepair?.id ?? "");
+  const selectedRepair = repairs.find((repair) => repair.id === selectedRepairId);
+  const selectedCustomer = selectedRepair
+    ? customers.find((customer) => customer.id === selectedRepair.customerId)
+      ?? customers.find((customer) => customer.phone === selectedRepair.customerPhone)
+    : undefined;
+  const [items, setItems] = useState<PosSaleItem[]>(() => invoiceBeingEdited?.items.map((item) => ({ ...item })) ?? initialRepair?.invoiceItems?.map((item) => ({ id: item.partId ?? item.id, name: item.description, price: item.unitPrice, quantity: item.quantity, itemType: item.type === "part" ? "replacement_part" : "repair_service" })) ?? []);
+  const [itemForm, setItemForm] = useState({ itemType: "repair_service" as NonNullable<PosSaleItem["itemType"]>, description: "General Labour", partId: "", quantity: "1", unitPrice: "", discount: "0", warranty: "", notes: "" });
+  const [workForm, setWorkForm] = useState({ diagnosis: invoiceBeingEdited?.diagnosis ?? "", repairWorkPerformed: invoiceBeingEdited?.repairWorkPerformed ?? "", technicianNotes: "", customerNote: invoiceBeingEdited?.customerNote ?? "", warrantyDetails: "" });
+  const [statusValue, setStatusValue] = useState(initialRepair?.status ?? "repairing");
+  const [discount, setDiscount] = useState(invoiceBeingEdited?.discount ?? 0);
+  const [taxRate, setTaxRate] = useState(invoiceBeingEdited?.taxRate ?? 0);
+  const [paymentMethod, setPaymentMethod] = useState(invoiceBeingEdited?.paymentMethod ?? "Cash");
+  const [paidAmount, setPaidAmount] = useState(invoiceBeingEdited?.paidAmount ?? 0);
+  const [paymentNote, setPaymentNote] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
 
-  const saveCustomer = (event: React.FormEvent) => {
-    event.preventDefault();
-    const existing = customers.find((customer) => customer.phone.replace(/\D/g, "") === customerForm.phone.replace(/\D/g, ""));
-    if (existing) {
-      setCustomerId(existing.id);
-      setCustomerDialogOpen(false);
-      return toast.info("This phone number already exists. Existing customer selected.");
-    }
-    const customer: Customer = { id: `CUS-${Date.now()}`, name: customerForm.name.trim(), phone: customerForm.phone.trim(), address: customerForm.address.trim(), email: "", totalRepairs: 0, totalSpent: 0, createdAt: new Date().toISOString() };
-    setCustomers((current) => [...current, customer]);
-    setCustomerId(customer.id);
-    setCustomerDialogOpen(false);
-    toast.success("Customer added and selected.");
-  };
+  const filteredRepairs = useMemo(() => {
+    const query = normalize(repairSearch);
+    return repairs.filter((repair) => {
+      if (!query) return true;
+      return [
+        repair.invoiceNumber,
+        repair.deviceNumber,
+        repair.ticketNumber,
+        repair.customer,
+        repair.customerPhone,
+        repair.serialNumber,
+        repair.device,
+        repair.brand,
+        repair.model,
+      ].some((value) => normalize(value).includes(query));
+    }).slice(0, 20);
+  }, [repairSearch, repairs]);
 
-  const addToCart = (product: Part) => {
-    const existing = cart.find((item) => item.id === product.id);
-    const available = product.stock + (saleBeingEdited?.items.find((item) => item.id === product.id)?.quantity ?? 0);
-    if (available < 1 || (existing && existing.quantity >= available)) return toast.error("Not enough stock available.");
-    setCart(existing ? cart.map((item) => item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item) : [...cart, { id: product.id, name: product.name, price: product.sellingPrice, costPrice: product.costPrice, quantity: 1 }]);
-  };
-
-  const addQuickItem = (event: React.FormEvent) => {
-    event.preventDefault();
-    const name = quickItemForm.name.trim();
-    const price = Number(quickItemForm.price);
-    const quantity = Math.max(1, Number(quickItemForm.quantity) || 1);
-    if (!name) return toast.error("Enter item name.");
-    if (!Number.isFinite(price) || price <= 0) return toast.error("Enter sale price.");
-    setCart((current) => [...current, { id: `TMP-${Date.now()}`, name, price, costPrice: Number(quickItemForm.costPrice) || 0, quantity }]);
-    setQuickItemForm({ name: "", price: "", costPrice: "0", quantity: "1" });
-    setQuickItemDialogOpen(false);
-    toast.success("Temporary item added to invoice.");
-  };
-
-  const updateQuantity = (id: string, quantity: number) => {
-    if (!Number.isFinite(quantity) || quantity < 1) return;
-    const product = products.find((item) => item.id === id);
-    const available = (product?.stock ?? 0) + (saleBeingEdited?.items.find((item) => item.id === id)?.quantity ?? 0);
-    if (quantity > available) return toast.error("Not enough stock available.");
-    setCart((current) => current.map((item) => item.id === id ? { ...item, quantity } : item));
-  };
-
-  const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const selectedPart = parts.find((part) => part.id === itemForm.partId);
+  const subtotal = items.reduce((sum, item) => sum + Math.max(0, item.quantity * item.price - (item.discount ?? 0)), 0);
   const safeDiscount = Math.min(Math.max(0, discount || 0), subtotal);
   const tax = (subtotal - safeDiscount) * Math.max(0, taxRate || 0) / 100;
-  const total = subtotal - safeDiscount + tax;
+  const grandTotal = Math.max(0, subtotal - safeDiscount + tax);
+  const safePaidAmount = Math.min(Math.max(0, paidAmount || 0), grandTotal);
+  const balance = Math.max(0, grandTotal - safePaidAmount);
+  const paymentStatus = balance <= 0 ? "Paid" : safePaidAmount > 0 ? "Partially Paid" : "Unpaid";
+  const dueState = selectedRepair ? getRepairDueState(selectedRepair) : null;
+  const statusProgress = progressForRepairStatus(statusValue);
 
-  const holdSale = () => {
-    if (!cart.length) return toast.error("Please add at least one item.");
-    if (!saleBeingEdited && !hasPermission("sales.create")) return toast.error("You do not have permission to create sales.");
-    setHeldSales((current) => [{ id: `HOLD-${Date.now()}`, heldAt: new Date().toISOString(), items: cart, discount: safeDiscount, taxRate, paymentMethod, customerId: customerId === "walk-in" ? undefined : customerId, paidAmount }, ...current]);
-    setCart([]); setDiscount(0); setPaidAmount(0); setSelectedProductId("choose");
-    toast.success("Sale held successfully.");
+  const addInvoiceItem = () => {
+    const quantity = Math.max(1, Number(itemForm.quantity) || 1);
+    const discountAmount = Math.max(0, Number(itemForm.discount) || 0);
+    const isPart = itemForm.itemType === "replacement_part";
+    const description = isPart ? selectedPart?.name ?? "" : itemForm.description.trim();
+    const unitPrice = Number(itemForm.unitPrice || (isPart ? selectedPart?.sellingPrice : 0));
+    if (!description) return toast.error(isPart ? "Select a replacement part." : "Enter repair work description.");
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) return toast.error("Enter a valid unit price.");
+    if (isPart && selectedPart && quantity > selectedPart.stock) return toast.error("Not enough stock available for this part.");
+    setItems((current) => [...current, {
+      id: isPart ? selectedPart?.id ?? `PART-${Date.now()}` : `SERVICE-${Date.now()}`,
+      name: description,
+      price: unitPrice,
+      costPrice: isPart ? selectedPart?.costPrice ?? 0 : 0,
+      quantity,
+      discount: discountAmount,
+      itemType: itemForm.itemType,
+      partCode: isPart ? selectedPart?.sku : undefined,
+      warranty: itemForm.warranty.trim(),
+      notes: itemForm.notes.trim(),
+    }]);
+    setItemForm({ itemType: "repair_service", description: "General Labour", partId: "", quantity: "1", unitPrice: "", discount: "0", warranty: "", notes: "" });
   };
 
-  const resumeSale = (held: HeldPosSale) => {
-    if (cart.length && !window.confirm("Replace the current cart with this held sale?")) return;
-    setCart(held.items); setDiscount(held.discount); setTaxRate(held.taxRate); setPaymentMethod(held.paymentMethod); setCustomerId(held.customerId ?? "walk-in"); setPaidAmount(held.paidAmount ?? 0);
-    setHeldSales((current) => current.filter((sale) => sale.id !== held.id));
-    toast.success("Held sale resumed.");
-  };
+  const removeItem = (index: number) => setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
 
-  const handleCheckout = () => {
-    if (!cart.length) return toast.error("Please add at least one item.");
-    if (saleBeingEdited && !isAdmin) return toast.error("Only an admin can edit a completed invoice.");
-    const selectedCustomer = customers.find((customer) => customer.id === customerId);
-    const safePaidAmount = Math.min(Math.max(0, paidAmount || 0), total);
-    const saleId = saleBeingEdited?.id ?? (invoiceNumber.trim() || `INV-${Date.now()}`);
-    const sale: PosSale = { id: saleId, date: saleBeingEdited?.date ?? new Date().toISOString(), items: cart, subtotal, discount: safeDiscount, taxRate, tax, total, paymentMethod, customerId: selectedCustomer?.id, customerName: selectedCustomer?.name ?? "Walk-in Customer", customerPhone: selectedCustomer?.phone, customerAddress: selectedCustomer?.address, paidAmount: safePaidAmount, pendingBalance: total - safePaidAmount, cashierId: user?.uid, cashierName: user?.displayName || user?.email || "Staff", cashierRole: role ?? undefined, shiftId: activeShift?.id, status: "completed", updatedAt: saleBeingEdited ? new Date().toISOString() : undefined };
-    const adjustmentDate = new Date().toISOString();
-    const adjustments = products.flatMap((product): StockAdjustment[] => {
-      const newQuantity = cart.find((item) => item.id === product.id)?.quantity ?? 0;
-      const oldQuantity = saleBeingEdited?.items.find((item) => item.id === product.id)?.quantity ?? 0;
-      const quantityChange = oldQuantity - newQuantity;
-      return quantityChange === 0 ? [] : [{ id: `ADJ-${Date.now()}-${product.id}`, partId: product.id, partName: product.name, date: adjustmentDate, quantityChange, previousStock: product.stock, newStock: product.stock + quantityChange, reason: saleBeingEdited ? "sale-edit" : "sale", reference: sale.id }];
-    });
-    setSales((current) => saleBeingEdited ? current.map((item) => item.id === sale.id ? sale : item) : [sale, ...current]);
-    if (adjustments.length) setStockAdjustments((current) => [...adjustments, ...current]);
-    setProducts((current) => current.map((product) => {
-      const newQuantity = cart.find((item) => item.id === product.id)?.quantity ?? 0;
-      const oldQuantity = saleBeingEdited?.items.find((item) => item.id === product.id)?.quantity ?? 0;
-      return newQuantity !== oldQuantity ? { ...product, stock: product.stock - (newQuantity - oldQuantity) } : product;
-    }));
-    if (!printPosReceipt(sale)) toast.error("Print window was blocked. Reprint it from Sales History.");
-    logStaffActivity(user, role, saleBeingEdited ? "invoice.updated" : "invoice.created", `${sale.id} for ${sale.customerName} - ${money(sale.total)}`, sale.id);
-    toast.success(saleBeingEdited ? "Sale updated successfully." : "Sale completed successfully!");
-    navigate("/pos/sales-history");
+  const saveRepairInvoice = async () => {
+    if (isSaving) return;
+    if (!selectedRepair) return toast.error("Select a repair ticket to continue.");
+    if (!items.length) return toast.error("Add repair service or replacement part.");
+    if (items.some((item) => item.quantity <= 0 || item.price < 0 || (item.discount ?? 0) < 0)) return toast.error("Invoice item amounts must be valid.");
+    setIsSaving(true);
+    let invoiceNumber = selectedRepair.invoiceNumber || invoiceBeingEdited?.id || "";
+    try {
+      if (!invoiceNumber) {
+        invoiceNumber = await generateInvoiceNumber();
+        if (await valueExists("invoice", invoiceNumber)) throw new Error("Invoice number already exists. Please save again.");
+      }
+      const now = new Date().toISOString();
+      const sale: PosSale = {
+        id: invoiceNumber,
+        date: invoiceBeingEdited?.date ?? now,
+        items,
+        subtotal,
+        discount: safeDiscount,
+        taxRate,
+        tax,
+        total: grandTotal,
+        paymentMethod,
+        customerId: selectedRepair.customerId,
+        customerName: selectedRepair.customer,
+        customerPhone: selectedRepair.customerPhone,
+        customerAddress: selectedRepair.customerAddress,
+        paidAmount: safePaidAmount,
+        pendingBalance: balance,
+        cashierId: user?.uid,
+        cashierName: user?.displayName || user?.email || "Staff",
+        cashierRole: role ?? undefined,
+        shiftId: activeShift?.id,
+        repairId: selectedRepair.id,
+        deviceNumber: selectedRepair.deviceNumber,
+        invoiceType: "repair",
+        repairStatus: statusValue,
+        repairProgress: statusProgress,
+        diagnosis: workForm.diagnosis.trim(),
+        repairWorkPerformed: workForm.repairWorkPerformed.trim(),
+        customerNote: workForm.customerNote.trim(),
+        status: "completed",
+        updatedAt: invoiceBeingEdited ? now : undefined,
+      };
+      const previousItems = invoiceBeingEdited?.items ?? [];
+      const adjustmentDate = now;
+      const physicalPartDeltas = new Map<string, number>();
+      for (const item of previousItems) if (item.itemType === "replacement_part") physicalPartDeltas.set(item.id, (physicalPartDeltas.get(item.id) ?? 0) + item.quantity);
+      for (const item of items) if (item.itemType === "replacement_part") physicalPartDeltas.set(item.id, (physicalPartDeltas.get(item.id) ?? 0) - item.quantity);
+      const adjustments: StockAdjustment[] = [];
+      setProducts((current) => current.map((part) => {
+        const delta = physicalPartDeltas.get(part.id) ?? 0;
+        if (delta === 0) return part;
+        adjustments.push({ id: `ADJ-${Date.now()}-${part.id}`, partId: part.id, partName: part.name, date: adjustmentDate, quantityChange: delta, previousStock: part.stock, newStock: part.stock + delta, reason: invoiceBeingEdited ? "sale-edit" : "sale", reference: invoiceNumber });
+        return { ...part, stock: part.stock + delta };
+      }));
+      if (adjustments.length) setStockAdjustments((current) => [...adjustments, ...current]);
+      setInvoices((current) => invoiceBeingEdited ? current.map((item) => item.id === invoiceBeingEdited.id ? sale : item) : [sale, ...current.filter((item) => item.id !== sale.id)]);
+      setRepairs((current) => current.map((repair) => {
+        if (repair.id !== selectedRepair.id) return repair;
+        const statusChanged = repair.status !== statusValue;
+        return {
+          ...repair,
+          invoiceNumber,
+          status: statusValue,
+          openStatus: ["completed", "delivered", "cancelled", "dead", "scrap"].includes(statusValue) ? "Closed" : "Open",
+          amount: grandTotal,
+          discount: safeDiscount,
+          paidAmount: safePaidAmount,
+          invoiceItems: items.map((item) => ({ id: `INVITEM-${item.id}-${Date.now()}`, description: item.name, quantity: item.quantity, unitPrice: item.price, type: item.itemType === "replacement_part" ? "part" : item.itemType === "labour" ? "labour" : "other", partId: item.itemType === "replacement_part" ? item.id : undefined })),
+          partsUsed: [
+            ...items.filter((item) => item.itemType === "replacement_part").map((item) => ({ id: item.id, name: item.name, quantity: item.quantity, cost: item.price })),
+            ...(repair.partsUsed ?? []).filter((part) => !items.some((item) => item.itemType === "replacement_part" && item.id === part.id)),
+          ],
+          payments: safePaidAmount > 0 ? [{ id: `PAY-${Date.now()}`, date: now, amount: safePaidAmount, method: paymentMethod, note: paymentNote.trim(), cashierId: user?.uid, cashierName: user?.displayName || user?.email || "Staff" }, ...(repair.payments ?? [])] : repair.payments,
+          repairNotes: [
+            ...(workForm.customerNote.trim() ? [{ id: `NOTE-CUSTOMER-${Date.now()}`, date: now, note: workForm.customerNote.trim(), author: user?.displayName || user?.email || "Staff", visibility: "customer" as const }] : []),
+            ...(workForm.technicianNotes.trim() ? [{ id: `NOTE-INTERNAL-${Date.now()}`, date: now, note: workForm.technicianNotes.trim(), author: user?.displayName || user?.email || "Staff", visibility: "internal" as const }] : []),
+            ...(repair.repairNotes ?? []),
+          ],
+          timeline: [{ date: now, status: statusValue, note: workForm.repairWorkPerformed.trim() || "Repair invoice saved.", technician: repair.technician, diagnosis: workForm.diagnosis.trim(), progress: statusProgress }, ...(repair.timeline ?? [])],
+          statusHistory: statusChanged ? [{ id: `STATUS-${Date.now()}`, date: now, status: statusValue, label: labelForRepairStatus(statusValue), note: workForm.customerNote.trim() || "Updated from Repair POS.", technician: repair.technician, progress: statusProgress }, ...(repair.statusHistory ?? [])] : repair.statusHistory,
+        };
+      }));
+      if (!printPosReceipt(sale)) toast.error("Print window was blocked. Reprint from Repair Invoice History.");
+      logStaffActivity(user, role, invoiceBeingEdited ? "repair_invoice.updated" : "repair_invoice.created", `${invoiceNumber} for ${selectedRepair.customer} - ${money(grandTotal)}`, selectedRepair.id);
+      toast.success("Repair invoice saved.");
+      navigate("/pos/sales-history");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Unable to save repair invoice.");
+      setIsSaving(false);
+    }
   };
-
-  const visibleProducts = products.filter((product) => {
-    const matchesSearch = `${product.name} ${product.sku}`.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = categoryFilter === "all" || product.category === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
-  const selectedCustomer = customers.find((customer) => customer.id === customerId);
-  const safePaidAmount = Math.min(Math.max(0, paidAmount || 0), total);
-  const remainingAmount = Math.max(0, total - safePaidAmount);
-  const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   return <div className="space-y-6 pb-20 lg:pb-6">
-    <div className="overflow-hidden rounded-xl border bg-white shadow-sm">
-      <div className="flex flex-col gap-3 bg-primary px-4 py-3 text-primary-foreground md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="text-white hover:bg-white/15 hover:text-white" onClick={() => navigate("/pos")}><ArrowLeft className="h-5 w-5" /></Button>
-          <div className="flex items-center gap-2 font-semibold"><ReceiptText className="h-5 w-5" />Sale Invoice</div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" size="sm" onClick={() => navigate("/pos/sales-history")}>Old Invoices</Button>
-          <Button type="button" variant="secondary" size="sm" onClick={holdSale} disabled={Boolean(saleBeingEdited)}>Hold Invoice</Button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 p-4 xl:grid-cols-[minmax(0,1fr)_390px]">
-        <div className="space-y-4">
-          <div className="grid gap-3 lg:grid-cols-[170px_minmax(220px,1fr)_220px_1fr_170px]">
-            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="h-10 bg-white"><SelectValue placeholder="Select Category" /></SelectTrigger>
-              <SelectContent><SelectItem value="all">Select Category</SelectItem><SelectItem value="GPU">GPU</SelectItem><SelectItem value="Gaming Parts">Gaming Parts</SelectItem><SelectItem value="PC Parts">PC Parts</SelectItem><SelectItem value="Laptop Parts">Laptop Parts</SelectItem><SelectItem value="Mobile Parts">Mobile Parts</SelectItem><SelectItem value="Accessories">Accessories</SelectItem><SelectItem value="POS Products">POS Products</SelectItem></SelectContent>
-            </Select>
-            <div className="flex">
-              <div className="relative flex-1"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input placeholder="Search & Scan Item (alt + i)" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="h-10 rounded-r-none pl-10" /></div>
-              <Button type="button" variant="outline" className="h-10 rounded-l-none" title="Add temporary item" onClick={() => { setQuickItemForm({ name: searchQuery, price: "", costPrice: "0", quantity: "1" }); setQuickItemDialogOpen(true); }}><Plus className="h-4 w-4" /></Button>
-            </div>
-            <div className="flex">
-              <Select value={customerId} onValueChange={setCustomerId}><SelectTrigger className="h-10 rounded-r-none bg-white"><SelectValue placeholder="Select Party" /></SelectTrigger><SelectContent><SelectItem value="walk-in">Walk-in Customer</SelectItem>{customers.map((customer) => <SelectItem key={customer.id} value={customer.id}>{customer.name} - {customer.phone}</SelectItem>)}</SelectContent></Select>
-              <Button type="button" variant="outline" className="h-10 rounded-l-none" onClick={() => { setCustomerForm({ name: "", phone: "", address: "" }); setCustomerDialogOpen(true); }}><Plus className="h-4 w-4" /></Button>
-            </div>
-            <Input value={invoiceNumber} onChange={(event) => setInvoiceNumber(event.target.value)} placeholder="Company Invoice Number" className="h-10" disabled={Boolean(saleBeingEdited)} />
-            <Input type="date" value={(saleBeingEdited?.date ?? new Date().toISOString()).slice(0, 10)} readOnly className="h-10 bg-white" />
-          </div>
-
-          <div className="grid gap-3 rounded-lg border bg-primary/5 p-3 lg:grid-cols-[minmax(220px,1fr)_auto]">
-            <div>
-              <Label className="text-xs font-semibold text-primary">Saved Item Select Karein</Label>
-              <Select value={selectedProductId} onValueChange={(value) => {
-                setSelectedProductId("choose");
-                const product = products.find((item) => item.id === value);
-                if (product) addToCart(product);
-              }}>
-                <SelectTrigger className="mt-1 h-11 bg-white">
-                  <SelectValue placeholder={products.length ? "Inventory se item select karein" : "Pehle item add karein"} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="choose">Select saved item</SelectItem>
-                  {visibleProducts.map((product) => (
-                    <SelectItem key={product.id} value={product.id}>
-                      {product.name} - {money(product.sellingPrice)} - Stock {product.stock}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          <div className="grid gap-2 rounded-lg border bg-white p-3 md:grid-cols-2 xl:grid-cols-3">
-            {visibleProducts.length === 0 ? (
-              <div className="rounded-md border border-dashed p-4 text-left text-muted-foreground">
-                No saved item found. Use + near search to add a temporary invoice item.
-              </div>
-            ) : visibleProducts.slice(0, 9).map((product) => <div key={product.id} className="rounded-md border bg-white p-3 hover:border-primary">
-              <button type="button" className="w-full text-left" onClick={() => addToCart(product)}>
-                <p className="font-semibold">{product.name}</p>
-                <p className="text-xs text-muted-foreground">{product.sku || "No SKU"} - Stock {product.stock}</p>
-                <p className="mt-1 font-bold text-primary">{money(product.sellingPrice)}</p>
-              </button>
-            </div>)}
-          </div>
-
-          {heldSales.length > 0 && !saleBeingEdited && (
-            <div className="rounded-lg border bg-amber-50 p-3">
-              <p className="text-sm font-semibold text-amber-900">Hold Invoices</p>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {heldSales.slice(0, 4).map((held) => <Button key={held.id} type="button" variant="outline" size="sm" onClick={() => resumeSale(held)}>{held.id} - {held.items.length} items</Button>)}
-              </div>
-            </div>
-          )}
-
-          <div className="overflow-x-auto rounded-lg border">
-            <table className="w-full min-w-[980px] text-sm">
-              <thead className="bg-primary text-primary-foreground">
-                <tr>
-                  <th className="px-3 py-3 text-left">Action</th>
-                  <th className="px-3 py-3 text-left">#Sr</th>
-                  <th className="px-3 py-3 text-left">Code</th>
-                  <th className="px-3 py-3 text-left">Name</th>
-                  <th className="px-3 py-3 text-left">Category</th>
-                  <th className="px-3 py-3 text-left">Company</th>
-                  <th className="px-3 py-3 text-left">Batch</th>
-                  <th className="px-3 py-3 text-right">Purchase Price</th>
-                  <th className="px-3 py-3 text-center">Qty</th>
-                  <th className="px-3 py-3 text-left">Unit</th>
-                  <th className="px-3 py-3 text-right">Sale Price</th>
-                  <th className="px-3 py-3 text-right">Discount%</th>
-                </tr>
-              </thead>
-              <tbody>
-                {cart.length === 0 ? <tr><td colSpan={12} className="h-56 text-center text-muted-foreground"><ShoppingCart className="mx-auto mb-3 h-8 w-8" />Search item and click to add it here.</td></tr> : cart.map((item, index) => {
-                  const product = products.find((row) => row.id === item.id);
-                  return <tr key={item.id} className="border-t">
-                    <td className="px-3 py-2"><Button variant="ghost" size="icon" onClick={() => setCart((current) => current.filter((row) => row.id !== item.id))}><Trash2 className="h-4 w-4" /></Button></td>
-                    <td className="px-3 py-2">{index + 1}</td>
-                    <td className="px-3 py-2 text-muted-foreground">{product?.sku || item.id}</td>
-                    <td className="px-3 py-2 font-medium">{item.name}</td>
-                    <td className="px-3 py-2">{product?.category || "-"}</td>
-                    <td className="px-3 py-2">{product?.supplier || "-"}</td>
-                    <td className="px-3 py-2">{product?.location || "-"}</td>
-                    <td className="px-3 py-2 text-right">{money(item.costPrice ?? product?.costPrice ?? 0)}</td>
-                    <td className="px-3 py-2"><Input type="number" min="1" value={item.quantity} onChange={(event) => updateQuantity(item.id, Number(event.target.value))} className="mx-auto h-9 w-20 text-center" /></td>
-                    <td className="px-3 py-2">{product?.unit || "pcs"}</td>
-                    <td className="px-3 py-2"><Input type="number" min="0" value={item.price} onChange={(event) => setCart((current) => current.map((row) => row.id === item.id ? { ...row, price: Math.max(0, Number(event.target.value)) } : row))} className="ml-auto h-9 w-28 text-right" /></td>
-                    <td className="px-3 py-2 text-right">0</td>
-                  </tr>;
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        <aside className="space-y-4">
-          <Card className="shadow-lg">
-            <CardContent className="space-y-4 p-4">
-              <div className="grid grid-cols-2 gap-3 text-center text-sm font-semibold"><div>Sub Total<br /><span className="text-lg text-primary">{money(subtotal)}</span></div><div>Pay Able<br /><span className="text-lg text-primary">{money(total)}</span></div></div>
-              <div className="grid grid-cols-[120px_1fr_1fr] items-center gap-3"><Label>Discount %/Cur</Label><Input value={0} readOnly className="h-10" /><Input type="number" min="0" max={subtotal} value={discount} onChange={(event) => setDiscount(Number(event.target.value))} className="h-10" /></div>
-              <div className="grid grid-cols-[120px_1fr] items-center gap-3"><Label>Tax</Label><Select value={String(taxRate)} onValueChange={(value) => setTaxRate(Number(value))}><SelectTrigger className="h-10"><SelectValue placeholder="Select Tax" /></SelectTrigger><SelectContent><SelectItem value="0">No Tax</SelectItem><SelectItem value="5">5%</SelectItem><SelectItem value="17">17%</SelectItem></SelectContent></Select></div>
-              <div className="grid grid-cols-[120px_1fr] items-center gap-3"><Label>Payment Type</Label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger className="h-10"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Card">Card</SelectItem><SelectItem value="Bank Transfer">Bank Transfer</SelectItem><SelectItem value="Credit">Credit</SelectItem></SelectContent></Select></div>
-              <div className="grid grid-cols-[120px_1fr] items-center gap-3"><Label>Enter Amount</Label><Input type="text" inputMode="decimal" value={paidAmount === 0 ? "" : String(paidAmount)} onChange={(event) => setPaidAmount(Number(event.target.value.replace(/[^0-9.]/g, "")) || 0)} className="h-10" placeholder="Enter paid amount" /></div>
-              <div className="flex justify-between rounded-md bg-primary px-3 py-3 font-bold text-primary-foreground"><span>Total</span><span>{money(total)}</span></div>
-              <div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3 text-center"><div><p className="text-xs text-muted-foreground">Paid</p><p className="text-xl font-bold text-primary">{money(safePaidAmount)}</p></div><div><p className="text-xs text-muted-foreground">Balance</p><p className="text-xl font-bold">{money(remainingAmount)}</p></div></div>
-            </CardContent>
-          </Card>
-          <Card className="shadow-sm">
-            <CardContent className="space-y-3 p-4">
-              <div className="flex items-center justify-between border-b pb-2">
-                <p className="font-semibold">Invoice Preview</p>
-                <span className="text-xs text-muted-foreground">{invoiceNumber.trim() || "Auto Invoice"}</span>
-              </div>
-              <div className="text-sm">
-                <p><span className="text-muted-foreground">Customer:</span> {selectedCustomer?.name ?? "Walk-in Customer"}</p>
-                <p><span className="text-muted-foreground">Payment:</span> {paymentMethod}</p>
-              </div>
-              <div className="max-h-48 space-y-2 overflow-auto rounded-md border p-2">
-                {cart.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">Item select karein, invoice yahan nazar ayegi.</p> : cart.map((item) => (
-                  <div key={item.id} className="flex justify-between gap-3 text-sm">
-                    <span>{item.name} x{item.quantity}</span>
-                    <b>{money(item.price * item.quantity)}</b>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between"><span>Sub Total</span><b>{money(subtotal)}</b></div>
-                <div className="flex justify-between"><span>Discount</span><b>- {money(safeDiscount)}</b></div>
-                <div className="flex justify-between"><span>Tax</span><b>{money(tax)}</b></div>
-                <div className="flex justify-between rounded bg-primary px-3 py-2 font-bold text-primary-foreground"><span>Payable</span><span>{money(total)}</span></div>
-              </div>
-            </CardContent>
-          </Card>
-        </aside>
-      </div>
-
-      <div className="flex flex-col gap-4 border-t bg-white p-4 md:flex-row md:items-center md:justify-between">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div className="rounded-lg border p-3 text-center"><p className="text-sm text-muted-foreground">Total Item</p><p className="text-3xl font-bold">{itemCount}</p></div>
-          <div className="rounded-lg border p-3 text-center"><p className="text-sm text-muted-foreground">Paid</p><p className="text-3xl font-bold text-primary">{money(safePaidAmount)}</p></div>
-          <div className="rounded-lg border p-3 text-center"><p className="text-sm text-muted-foreground">Balance</p><p className="text-3xl font-bold text-primary">{money(remainingAmount)}</p></div>
-          <div className="rounded-lg border p-3 text-center"><p className="text-sm text-muted-foreground">Return</p><p className="text-3xl font-bold">0</p></div>
-        </div>
-        <div className="flex flex-wrap justify-end gap-3">{hasPermission("sales.create") && <Button onClick={handleCheckout}>Save & Print Invoice</Button>}<Button onClick={holdSale} disabled={Boolean(saleBeingEdited)}>Hold</Button><Button variant="destructive" onClick={() => { setCart([]); setDiscount(0); setPaidAmount(0); setSelectedProductId("choose"); }}>Reset</Button></div>
-      </div>
+    <div className="flex flex-col gap-3 rounded-xl border bg-primary px-4 py-3 text-primary-foreground md:flex-row md:items-center md:justify-between">
+      <div className="flex items-center gap-3"><Button variant="ghost" size="icon" className="text-white hover:bg-white/15 hover:text-white" onClick={() => navigate("/pos")}><ArrowLeft className="h-5 w-5" /></Button><div className="flex items-center gap-2 font-semibold"><FileText className="h-5 w-5" />Repair POS</div></div>
+      <Button type="button" variant="secondary" size="sm" onClick={() => navigate("/pos/sales-history")}>Repair Invoice History</Button>
     </div>
 
-    <Dialog open={quickItemDialogOpen} onOpenChange={setQuickItemDialogOpen}>
-      <DialogContent>
-        <DialogHeader><DialogTitle>Add Temporary Invoice Item</DialogTitle></DialogHeader>
-        <form onSubmit={addQuickItem} className="space-y-4">
-          <div><Label>Item Name</Label><Input value={quickItemForm.name} onChange={(event) => setQuickItemForm({ ...quickItemForm, name: event.target.value })} required autoFocus /></div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <div><Label>Sale Price</Label><Input type="text" inputMode="decimal" value={quickItemForm.price} onChange={(event) => setQuickItemForm({ ...quickItemForm, price: event.target.value.replace(/[^0-9.]/g, "") })} required /></div>
-            <div><Label>Quantity</Label><Input type="text" inputMode="numeric" value={quickItemForm.quantity} onChange={(event) => setQuickItemForm({ ...quickItemForm, quantity: event.target.value.replace(/[^0-9]/g, "") })} required /></div>
-            <div><Label>Cost Price</Label><Input type="text" inputMode="decimal" value={quickItemForm.costPrice} onChange={(event) => setQuickItemForm({ ...quickItemForm, costPrice: event.target.value.replace(/[^0-9.]/g, "") })} /></div>
-          </div>
-          <p className="text-xs text-muted-foreground">Ye item inventory me save nahi hoga. Sirf is invoice ke liye use hoga.</p>
-          <DialogFooter><Button type="button" variant="outline" onClick={() => setQuickItemDialogOpen(false)}>Cancel</Button><Button type="submit">Add to Invoice</Button></DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <Card><CardHeader><CardTitle>1. Find Repair</CardTitle></CardHeader><CardContent className="space-y-3"><div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input value={repairSearch} onChange={(event) => setRepairSearch(event.target.value)} placeholder="Search invoice, device number, ticket, customer, phone, serial, brand or model" className="pl-10" /></div><Select value={selectedRepairId || "none"} onValueChange={(value) => { setSelectedRepairId(value); const repair = repairs.find((item) => item.id === value); if (repair) setStatusValue(repair.status); }}><SelectTrigger><SelectValue placeholder="Select repair ticket" /></SelectTrigger><SelectContent><SelectItem value="none" disabled>Select repair ticket</SelectItem>{filteredRepairs.map((repair) => <SelectItem key={repair.id} value={repair.id}>{repair.invoiceNumber || "No invoice"} | {repair.deviceNumber || repair.ticketNumber || repair.id} | {repair.customer} | {repair.device} | {labelForRepairStatus(repair.status)}</SelectItem>)}</SelectContent></Select>{!selectedRepair && <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">Select a repair ticket to continue.</p>}</CardContent></Card>
 
-    <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}><DialogContent><DialogHeader><DialogTitle>Add Customer</DialogTitle></DialogHeader><form onSubmit={saveCustomer} className="space-y-4"><div><Label htmlFor="posCustomerName">Customer Name</Label><Input id="posCustomerName" value={customerForm.name} onChange={(event) => setCustomerForm({ ...customerForm, name: event.target.value })} required /></div><div><Label htmlFor="posCustomerPhone">Phone Number</Label><Input id="posCustomerPhone" value={customerForm.phone} onChange={(event) => setCustomerForm({ ...customerForm, phone: event.target.value })} required /></div><div><Label htmlFor="posCustomerAddress">Address</Label><Input id="posCustomerAddress" value={customerForm.address} onChange={(event) => setCustomerForm({ ...customerForm, address: event.target.value })} /></div><DialogFooter><Button type="button" variant="outline" onClick={() => setCustomerDialogOpen(false)}>Cancel</Button><Button type="submit">Add & Select</Button></DialogFooter></form></DialogContent></Dialog>
+    {selectedRepair && <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
+      <div className="space-y-6">
+        <Card><CardHeader><CardTitle>2. Customer and Device Summary</CardTitle></CardHeader><CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{[
+          ["Customer Name", selectedRepair.customer],
+          ["Phone Number", selectedRepair.customerPhone || selectedCustomer?.phone || "-"],
+          ["Email", selectedRepair.customerEmail || selectedCustomer?.email || "-"],
+          ["Address", selectedRepair.customerAddress || selectedCustomer?.address || "-"],
+          ["Device Number", selectedRepair.deviceNumber || selectedRepair.ticketNumber || selectedRepair.id],
+          ["Invoice Number", selectedRepair.invoiceNumber || "Will create on save"],
+          ["Ticket Number", selectedRepair.ticketNumber || "-"],
+          ["Device Type", selectedRepair.device],
+          ["Brand / Model", [selectedRepair.brand, selectedRepair.model].filter(Boolean).join(" / ") || "-"],
+          ["Serial Number", selectedRepair.serialNumber || "-"],
+          ["Accessories", selectedRepair.accessories || "-"],
+          ["Customer Complaint", selectedRepair.issueDescription || selectedRepair.issue],
+          ["Technician", selectedRepair.technician || "Unassigned"],
+          ["Current Status", `${labelForRepairStatus(selectedRepair.status)} - ${progressForRepairStatus(selectedRepair.status)}%`],
+          ["Expected Return", `${selectedRepair.estimatedCompletion || "-"} (${dueState?.label ?? "-"})`],
+        ].map(([label, value]) => <div key={label} className="rounded-md border p-3"><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-sm font-medium">{value}</p></div>)}</CardContent></Card>
+
+        <Card><CardHeader><CardTitle>3. Add Repair Work</CardTitle></CardHeader><CardContent className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Diagnosis</Label><Textarea value={workForm.diagnosis} onChange={(event) => setWorkForm({ ...workForm, diagnosis: event.target.value })} rows={3} /></div><div className="space-y-2"><Label>Repair Work Performed</Label><Textarea value={workForm.repairWorkPerformed} onChange={(event) => setWorkForm({ ...workForm, repairWorkPerformed: event.target.value })} rows={3} /></div><div className="space-y-2"><Label>Technician Notes</Label><Textarea value={workForm.technicianNotes} onChange={(event) => setWorkForm({ ...workForm, technicianNotes: event.target.value })} rows={3} /></div><div className="space-y-2"><Label>Customer-Facing Note</Label><Textarea value={workForm.customerNote} onChange={(event) => setWorkForm({ ...workForm, customerNote: event.target.value })} rows={3} /></div><div className="space-y-2 md:col-span-2"><Label>Warranty Details</Label><Input value={workForm.warrantyDetails} onChange={(event) => setWorkForm({ ...workForm, warrantyDetails: event.target.value })} placeholder="e.g. 7 days checking warranty" /></div></CardContent></Card>
+
+        <Card><CardHeader><CardTitle>4. Repair Items</CardTitle></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><Select value={itemForm.itemType} onValueChange={(itemType) => setItemForm({ ...itemForm, itemType: itemType as NonNullable<PosSaleItem["itemType"]>, partId: "", unitPrice: "" })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(itemTypeLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select>{itemForm.itemType === "replacement_part" ? <Select value={itemForm.partId || "none"} onValueChange={(partId) => { const part = parts.find((item) => item.id === partId); setItemForm({ ...itemForm, partId, unitPrice: String(part?.sellingPrice ?? "") }); }}><SelectTrigger><SelectValue placeholder="Select replacement part" /></SelectTrigger><SelectContent><SelectItem value="none" disabled>Select replacement part</SelectItem>{parts.map((part) => <SelectItem key={part.id} value={part.id}>{part.name} | {part.sku || "No SKU"} | Stock {part.stock}</SelectItem>)}</SelectContent></Select> : <Select value={itemForm.description} onValueChange={(description) => setItemForm({ ...itemForm, description })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{serviceOptions.map((service) => <SelectItem key={service} value={service}>{service}</SelectItem>)}</SelectContent></Select>}<Input type="number" min="1" value={itemForm.quantity} onChange={(event) => setItemForm({ ...itemForm, quantity: event.target.value })} placeholder="Quantity" /><Input type="number" min="0" value={itemForm.unitPrice} onChange={(event) => setItemForm({ ...itemForm, unitPrice: event.target.value })} placeholder="Unit price" /><Input type="number" min="0" value={itemForm.discount} onChange={(event) => setItemForm({ ...itemForm, discount: event.target.value })} placeholder="Discount" /><Input value={itemForm.warranty} onChange={(event) => setItemForm({ ...itemForm, warranty: event.target.value })} placeholder="Warranty" /><Input className="xl:col-span-2" value={itemForm.notes} onChange={(event) => setItemForm({ ...itemForm, notes: event.target.value })} placeholder="Notes" /></div><Button type="button" onClick={addInvoiceItem} className="gap-2"><Plus className="h-4 w-4" />Add Repair Item</Button><div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[920px] text-sm"><thead className="bg-primary text-primary-foreground"><tr><th className="px-3 py-3 text-left">Action</th><th className="px-3 py-3 text-left">Sr#</th><th className="px-3 py-3 text-left">Item Type</th><th className="px-3 py-3 text-left">Description</th><th className="px-3 py-3 text-left">Part Code</th><th className="px-3 py-3 text-right">Quantity</th><th className="px-3 py-3 text-right">Unit Price</th><th className="px-3 py-3 text-right">Discount</th><th className="px-3 py-3 text-right">Total</th><th className="px-3 py-3 text-left">Warranty</th><th className="px-3 py-3 text-left">Notes</th></tr></thead><tbody>{items.length === 0 ? <tr><td colSpan={11} className="h-32 text-center text-muted-foreground">No repair service or part added.</td></tr> : items.map((item, index) => <tr key={`${item.id}-${index}`} className="border-t"><td className="px-3 py-2"><Button variant="ghost" size="icon" onClick={() => removeItem(index)}><Trash2 className="h-4 w-4" /></Button></td><td className="px-3 py-2">{index + 1}</td><td className="px-3 py-2">{itemTypeLabels[item.itemType ?? "other"]}</td><td className="px-3 py-2 font-medium">{item.name}</td><td className="px-3 py-2">{item.partCode || "-"}</td><td className="px-3 py-2 text-right">{item.quantity}</td><td className="px-3 py-2 text-right">{money(item.price)}</td><td className="px-3 py-2 text-right">{money(item.discount ?? 0)}</td><td className="px-3 py-2 text-right">{money(item.quantity * item.price - (item.discount ?? 0))}</td><td className="px-3 py-2">{item.warranty || "-"}</td><td className="px-3 py-2">{item.notes || "-"}</td></tr>)}</tbody></table></div></CardContent></Card>
+      </div>
+
+      <aside className="space-y-4">
+        <Card><CardHeader><CardTitle>5. Charges and Payment</CardTitle></CardHeader><CardContent className="space-y-4"><div className="grid grid-cols-2 gap-3 text-center text-sm font-semibold"><div>Subtotal<br /><span className="text-lg text-primary">{money(subtotal)}</span></div><div>Grand Total<br /><span className="text-lg text-primary">{money(grandTotal)}</span></div></div><div className="grid grid-cols-[120px_1fr] items-center gap-3"><Label>Discount</Label><Input type="number" min="0" max={subtotal} value={discount} onChange={(event) => setDiscount(Number(event.target.value))} /></div><div className="grid grid-cols-[120px_1fr] items-center gap-3"><Label>Tax</Label><Select value={String(taxRate)} onValueChange={(value) => setTaxRate(Number(value))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="0">No Tax</SelectItem><SelectItem value="5">5%</SelectItem><SelectItem value="17">17%</SelectItem></SelectContent></Select></div><div className="grid grid-cols-[120px_1fr] items-center gap-3"><Label>Payment</Label><Select value={paymentMethod} onValueChange={setPaymentMethod}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Cash">Cash</SelectItem><SelectItem value="Bank">Bank</SelectItem><SelectItem value="Card">Card</SelectItem><SelectItem value="Other">Other</SelectItem></SelectContent></Select></div><div className="grid grid-cols-[120px_1fr] items-center gap-3"><Label>Paid Amount</Label><Input type="number" min="0" max={grandTotal} value={paidAmount} onChange={(event) => setPaidAmount(Number(event.target.value) || 0)} /></div><div className="space-y-2"><Label>Payment Notes</Label><Input value={paymentNote} onChange={(event) => setPaymentNote(event.target.value)} /></div><div className="grid grid-cols-2 gap-3 rounded-lg bg-muted/40 p-3 text-center"><div><p className="text-xs text-muted-foreground">Payment Status</p><p className="text-xl font-bold text-primary">{paymentStatus}</p></div><div><p className="text-xs text-muted-foreground">Balance</p><p className="text-xl font-bold">{money(balance)}</p></div></div></CardContent></Card>
+        <Card><CardHeader><CardTitle>6. Repair Status</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-sm text-muted-foreground">Current Status: {labelForRepairStatus(selectedRepair.status)} - {progressForRepairStatus(selectedRepair.status)}%</p><Select value={statusValue} onValueChange={setStatusValue}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{repairStatusOptions.map((status) => <SelectItem key={status} value={status}>{labelForRepairStatus(status)}</SelectItem>)}</SelectContent></Select><p className="text-sm font-medium">New progress: {statusProgress}%</p></CardContent></Card>
+        <Card><CardHeader><CardTitle>7. Save and Print</CardTitle></CardHeader><CardContent className="space-y-3"><Button className="w-full gap-2" onClick={saveRepairInvoice} disabled={isSaving || !hasPermission("sales.create")}><Printer className="h-4 w-4" />{isSaving ? "Saving..." : "Save Repair Invoice"}</Button><Link to={`/repairs/${selectedRepair.id}`}><Button variant="outline" className="w-full">View Repair Details</Button></Link></CardContent></Card>
+      </aside>
+    </div>}
   </div>;
 }

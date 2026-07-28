@@ -11,8 +11,8 @@ const escapeHtml = (value: string | number | undefined) =>
 export function printRepairLabel(ticket: RepairTicket) {
   const printWindow = window.open("", "_blank", "width=760,height=650");
   if (!printWindow) return false;
-  const jobNumber = ticket.jobNumber || "-";
-  const ticketNumber = ticket.ticketNumber || ticket.id;
+  const deviceNumber = ticket.deviceNumber || ticket.ticketNumber || ticket.id;
+  const invoiceNumber = ticket.invoiceNumber || ticket.ticketNumber || ticket.id;
 
   printWindow.document.write(`<!doctype html>
 <html><head><meta charset="utf-8"><title>${escapeHtml(ticket.id)} - Device Label</title>
@@ -65,20 +65,20 @@ export function printRepairLabel(ticket: RepairTicket) {
 </div>
 <div class="preview">
   <section class="copy">
-    <div class="copy-head"><div><h1>GamingTech.pk</h1><div>Customer Repair Copy</div></div><div class="copy-job">${escapeHtml(jobNumber)}</div></div>
-    <div class="copy-grid"><span class="copy-key">Customer</span><span>${escapeHtml(ticket.customer)}</span></div>
+    <div class="copy-head"><div><h1>GamingTech.pk</h1><div>Customer Repair Copy</div></div><div class="copy-job">${escapeHtml(deviceNumber)}</div></div>
+    <div class="copy-grid"><span class="copy-key">Customer Name</span><span>${escapeHtml(ticket.customer)}</span></div>
     <div class="copy-grid"><span class="copy-key">Phone</span><span>${escapeHtml(ticket.customerPhone)}</span></div>
-    <div class="copy-grid"><span class="copy-key">Ticket Number</span><span><b>${escapeHtml(ticketNumber)}</b> - Device number</span></div>
-    <div class="copy-grid"><span class="copy-key">Job Number</span><span><b>${escapeHtml(jobNumber)}</b> - Customer job</span></div>
+    <div class="copy-grid"><span class="copy-key">Device Number</span><span><b>${escapeHtml(deviceNumber)}</b></span></div>
+    <div class="copy-grid"><span class="copy-key">Invoice Number</span><span><b>${escapeHtml(invoiceNumber)}</b></span></div>
     <div class="copy-grid"><span class="copy-key">Device</span><span>${escapeHtml(ticket.device)}</span></div>
     <div class="copy-grid"><span class="copy-key">Link</span><span>${escapeHtml(ticket.device)} belongs to ${escapeHtml(ticket.customer)} and work is in progress.</span></div>
     <div class="copy-grid"><span class="copy-key">Issue</span><span>${escapeHtml(ticket.issue)}</span></div>
     <div class="copy-grid"><span class="copy-key">Date</span><span>${escapeHtml(ticket.createdAt)}</span></div>
   </section>
   <main class="label" id="label">
-    <div class="head"><div><div class="brand">GamingTech.pk</div><div class="tagline">DEVICE LABEL / SHOP TICKET</div></div><div><div class="ticket">${escapeHtml(ticketNumber)}</div><div class="repair">${escapeHtml(jobNumber)}</div></div></div>
-    <div class="row"><span class="key">Ticket</span><span class="value">${escapeHtml(ticketNumber)}</span></div>
-    <div class="row"><span class="key">Job</span><span class="value">${escapeHtml(jobNumber)}</span></div>
+    <div class="head"><div><div class="brand">GamingTech.pk</div><div class="tagline">DEVICE LABEL / SHOP TICKET</div></div><div><div class="ticket">${escapeHtml(deviceNumber)}</div><div class="repair">${escapeHtml(invoiceNumber)}</div></div></div>
+    <div class="row"><span class="key">Device #</span><span class="value">${escapeHtml(deviceNumber)}</span></div>
+    <div class="row"><span class="key">Invoice</span><span class="value">${escapeHtml(invoiceNumber)}</span></div>
     <div class="row"><span class="key">Customer</span><span class="value">${escapeHtml(ticket.customer)}</span></div>
     <div class="row"><span class="key">Phone</span><span class="value">${escapeHtml(ticket.customerPhone)}</span></div>
     <div class="row"><span class="key">Device</span><span class="value">${escapeHtml(ticket.device)}</span></div>

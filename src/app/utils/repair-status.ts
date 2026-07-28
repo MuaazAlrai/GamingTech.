@@ -2,14 +2,18 @@ import type { RepairTicket, RepairTimelineEvent } from "../types/repair-ticket";
 
 export const repairStatusLabels: Record<string, string> = {
   received: "Received",
-  diagnosing: "Diagnosing",
-  waiting_approval: "Waiting Approval",
+  initial_inspection: "Initial Inspection",
+  diagnosing: "Awaiting Diagnosis",
+  diagnosis_completed: "Diagnosis Completed",
+  waiting_approval: "Awaiting Customer Approval",
+  approved: "Approved",
   waiting_parts: "Waiting Parts",
-  repairing: "Repairing",
+  repairing: "Repair In Progress",
   testing: "Testing",
+  completed: "Repair Completed",
   ready: "Ready for Pickup",
-  completed: "Completed",
   delivered: "Delivered",
+  on_hold: "On Hold",
   cancelled: "Cancelled",
   dead: "Cannot Be Repaired",
   scrap: "Cannot Be Repaired",
@@ -18,23 +22,46 @@ export const repairStatusLabels: Record<string, string> = {
 };
 
 export const repairStatusProgress: Record<string, number> = {
-  received: 10,
-  diagnosing: 25,
-  waiting_approval: 35,
+  received: 5,
+  initial_inspection: 10,
+  diagnosing: 15,
+  diagnosis_completed: 25,
+  waiting_approval: 30,
+  approved: 35,
   waiting_parts: 45,
   repairing: 60,
   testing: 80,
-  ready: 95,
-  to_return: 90,
-  completed: 100,
+  completed: 90,
+  ready: 100,
   delivered: 100,
-  cancelled: 100,
+  on_hold: 50,
+  cancelled: 0,
   dead: 100,
   scrap: 100,
   pending: 20,
+  to_return: 90,
 };
 
-export const inactiveRepairStatuses = new Set(["completed", "ready", "delivered", "cancelled", "dead", "scrap"]);
+export const inactiveRepairStatuses = new Set(["completed", "delivered", "cancelled", "dead", "scrap"]);
+
+export const repairStatusOptions = [
+  "received",
+  "initial_inspection",
+  "diagnosing",
+  "diagnosis_completed",
+  "waiting_approval",
+  "approved",
+  "waiting_parts",
+  "repairing",
+  "testing",
+  "completed",
+  "ready",
+  "delivered",
+  "on_hold",
+  "cancelled",
+  "dead",
+  "scrap",
+] as const;
 
 export const labelForRepairStatus = (status: string) => repairStatusLabels[status] ?? status.replace(/_/g, " ");
 

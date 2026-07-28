@@ -31,10 +31,11 @@ export function SalesHistory() {
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredSales = sales.filter((sale) => {
+    if (sale.invoiceType !== "repair" && !sale.repairId) return false;
     const query = searchQuery.toLowerCase();
     return (
       sale.id.toLowerCase().includes(query) ||
-      (sale.customerName ?? "walk-in customer").toLowerCase().includes(query) ||
+      (sale.customerName ?? "customer").toLowerCase().includes(query) ||
       (sale.customerPhone ?? "").toLowerCase().includes(query) ||
       sale.paymentMethod.toLowerCase().includes(query) ||
       new Date(sale.date).toLocaleDateString().toLowerCase().includes(query) ||
@@ -45,11 +46,11 @@ export function SalesHistory() {
   const closeSale = (sale: PosSale, status: "cancelled" | "refunded") => {
     if ((sale.status ?? "completed") !== "completed") return;
     const action = status === "refunded" ? "refund" : "cancel";
-    if (!window.confirm(`Are you sure you want to ${action} ${sale.id}? Sold stock will be restored.`)) return;
+    if (!window.confirm(`Are you sure you want to ${action} repair invoice ${sale.id}? Used repair parts will be restored to stock.`)) return;
     const now = new Date().toISOString();
     const adjustments = products.flatMap((product): StockAdjustment[] => {
       const soldItem = sale.items.find((item) => item.id === product.id);
-      return soldItem ? [{ id: `ADJ-${Date.now()}-${product.id}`, partId: product.id, partName: product.name, date: now, quantityChange: soldItem.quantity, previousStock: product.stock, newStock: product.stock + soldItem.quantity, reason: status === "refunded" ? "refund" : "sale-cancel", reference: sale.id }] : [];
+      return soldItem ? [{ id: `ADJ-${Date.now()}-${product.id}`, partId: product.id, partName: product.name, date: now, quantityChange: soldItem.quantity, previousStock: product.stock, newStock: product.stock + soldItem.quantity, reason: status === "refunded" ? "repair-invoice-refund" : "repair-invoice-cancel", reference: sale.id }] : [];
     });
     setSales((current) => current.map((item) => item.id === sale.id ? { ...item, status, ...(status === "refunded" ? { refundedAt: now } : { cancelledAt: now }) } : item));
     setProducts((current) => current.map((product) => {
@@ -57,8 +58,8 @@ export function SalesHistory() {
       return soldItem ? { ...product, stock: product.stock + soldItem.quantity } : product;
     }));
     if (adjustments.length) setStockAdjustments((current) => [...adjustments, ...current]);
-    logStaffActivity(user, role, status === "refunded" ? "invoice.refunded" : "invoice.cancelled", `${sale.id} · stock restored`, sale.id);
-    toast.success(status === "refunded" ? "Sale refunded and stock restored." : "Sale cancelled and stock restored.");
+    logStaffActivity(user, role, status === "refunded" ? "repair_invoice.refunded" : "repair_invoice.cancelled", `${sale.id} - repair parts restored`, sale.id);
+    toast.success(status === "refunded" ? "Repair invoice refunded and parts restored." : "Repair invoice cancelled and parts restored.");
   };
 
   return (
@@ -70,20 +71,20 @@ export function SalesHistory() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-3xl font-bold">Sales History</h1>
-          <p className="text-muted-foreground mt-1">View completed POS transactions</p>
+          <h1 className="text-3xl font-bold">Repair Invoice History</h1>
+          <p className="text-muted-foreground mt-1">View completed repair invoices</p>
         </div>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Transactions</CardTitle>
+          <CardTitle>Repair Invoices</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="relative mb-6">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Search invoice, customer, phone, item or payment..."
+              placeholder="Search repair invoice, customer, phone, device, item or payment..."
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               className="pl-10"
@@ -94,11 +95,12 @@ export function SalesHistory() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Sale ID</TableHead>
+                  <TableHead>Invoice Number</TableHead>
+                  <TableHead>Device Number</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Customer</TableHead>
                   <TableHead>Cashier</TableHead>
-                  <TableHead>Items</TableHead>
+                  <TableHead>Repair Items</TableHead>
                   <TableHead>Payment</TableHead>
                   <TableHead>Payment Status</TableHead>
                   <TableHead>Status</TableHead>
@@ -111,18 +113,19 @@ export function SalesHistory() {
               <TableBody>
                 {filteredSales.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={12} className="py-8 text-center text-muted-foreground">
+                    <TableCell colSpan={13} className="py-8 text-center text-muted-foreground">
                       <ReceiptText className="mx-auto mb-3 h-8 w-8" />
-                      No sales found. Complete a POS checkout first.
+                      No repair invoices found. Select a repair ticket to create a Repair Invoice.
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredSales.map((sale) => (
                     <TableRow key={sale.id}>
-                      <TableCell className="font-medium">{sale.id}</TableCell>
+                      <TableCell className="font-medium">{sale.repairId ? <Link className="text-primary hover:underline" to={`/repairs/${sale.repairId}`}>{sale.id}</Link> : sale.id}</TableCell>
+                      <TableCell className="font-medium">{sale.repairId ? <Link className="text-primary hover:underline" to={`/repairs/${sale.repairId}`}>{sale.deviceNumber || "-"}</Link> : sale.deviceNumber || "-"}</TableCell>
                       <TableCell>{new Date(sale.date).toLocaleString()}</TableCell>
-                      <TableCell><div><p className="font-medium">{sale.customerName ?? "Walk-in Customer"}</p>{sale.customerPhone && <p className="text-xs text-muted-foreground">{sale.customerPhone}</p>}</div></TableCell>
-                      <TableCell><div><p className="font-medium">{sale.cashierName ?? "Previous sale"}</p>{sale.cashierRole && <p className="text-xs capitalize text-muted-foreground">{sale.cashierRole}</p>}</div></TableCell>
+                      <TableCell><div><p className="font-medium">{sale.customerName ?? "Customer"}</p>{sale.customerPhone && <p className="text-xs text-muted-foreground">{sale.customerPhone}</p>}</div></TableCell>
+                      <TableCell><div><p className="font-medium">{sale.cashierName ?? "Staff"}</p>{sale.cashierRole && <p className="text-xs capitalize text-muted-foreground">{sale.cashierRole}</p>}</div></TableCell>
                       <TableCell>
                         {sale.items.map((item) => `${item.name} x${item.quantity}`).join(", ")}
                       </TableCell>
@@ -137,9 +140,9 @@ export function SalesHistory() {
                         ₨{sale.total.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </TableCell>
                       <TableCell className="text-right"><div className="flex justify-end gap-1">
-                        {hasPermission("sales.print") && <Button variant="outline" size="icon" title="Print receipt" onClick={() => printPosReceipt(sale)}><Printer className="h-4 w-4" /></Button>}
-                        {hasPermission("sales.print") && <Button variant="outline" size="icon" title="Print invoice / Save PDF" onClick={() => printPosInvoice(sale)}><FileDown className="h-4 w-4" /></Button>}
-                        {(sale.status ?? "completed") === "completed" && <>{hasPermission("sales.edit") && <Button variant="outline" size="icon" title="Edit sale" onClick={() => navigate(`/pos/sale?edit=${encodeURIComponent(sale.id)}`)}><Pencil className="h-4 w-4" /></Button>}{hasPermission("sales.edit") && <Button variant="outline" size="icon" title="Return / refund" onClick={() => closeSale(sale, "refunded")}><RotateCcw className="h-4 w-4" /></Button>}{hasPermission("sales.delete") && <Button variant="destructive" size="icon" title="Cancel sale" onClick={() => closeSale(sale, "cancelled")}><Ban className="h-4 w-4" /></Button>}</>}
+                        {hasPermission("sales.print") && <Button variant="outline" size="icon" title="Print repair receipt" onClick={() => printPosReceipt(sale)}><Printer className="h-4 w-4" /></Button>}
+                        {hasPermission("sales.print") && <Button variant="outline" size="icon" title="Print Repair Invoice / Save PDF" onClick={() => printPosInvoice(sale)}><FileDown className="h-4 w-4" /></Button>}
+                        {(sale.status ?? "completed") === "completed" && <>{sale.repairId && <Button variant="outline" size="icon" title="View Repair Details" onClick={() => navigate(`/repairs/${sale.repairId}`)}><ReceiptText className="h-4 w-4" /></Button>}{hasPermission("sales.edit") && <Button variant="outline" size="icon" title="Edit repair invoice" onClick={() => navigate(`/pos/sale?edit=${encodeURIComponent(sale.id)}`)}><Pencil className="h-4 w-4" /></Button>}{hasPermission("sales.edit") && <Button variant="outline" size="icon" title="Refund" onClick={() => closeSale(sale, "refunded")}><RotateCcw className="h-4 w-4" /></Button>}{hasPermission("sales.delete") && <Button variant="destructive" size="icon" title="Cancel repair invoice" onClick={() => closeSale(sale, "cancelled")}><Ban className="h-4 w-4" /></Button>}</>}
                       </div>
                       </TableCell>
                     </TableRow>
