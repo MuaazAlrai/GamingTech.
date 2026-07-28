@@ -2,11 +2,13 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import type { User } from "firebase/auth";
 import { onAuthStateChanged } from "firebase/auth";
-import { auth } from "../../firebase";
+import { doc, onSnapshot, serverTimestamp, setDoc } from "firebase/firestore";
+import { auth, db } from "../../firebase";
 import { logStaffActivity } from "../utils/staff-activity";
 import type { AppUser } from "../types/app-user";
 import { allPermissions, defaultEmployeePermissions } from "./permissions";
 import type { PermissionKey } from "./permissions";
+import { removeUndefinedFields } from "../hooks/use-persistent-state";
 
 type AuthContextValue = {
   user: User | null;
@@ -26,6 +28,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const usersKey = "gamingtech.users";
 const deletedUsersKey = "gamingtech.deletedUsers";
+const usersStateDoc = doc(db, "appState", "gamingtech_users");
 
 const readUsers = (): AppUser[] => {
   try {
@@ -35,7 +38,17 @@ const readUsers = (): AppUser[] => {
   }
 };
 
-const writeUsers = (users: AppUser[]) => localStorage.setItem(usersKey, JSON.stringify(users));
+const writeUsers = (users: AppUser[]) => localStorage.setItem(usersKey, JSON.stringify(removeUndefinedFields(users)));
+
+const syncUsers = (users: AppUser[]) => {
+  setDoc(
+    usersStateDoc,
+    { key: usersKey, value: removeUndefinedFields(users), updatedAt: serverTimestamp() },
+    { merge: true },
+  ).catch((error) => {
+    console.warn("Unable to sync users to Firestore", error);
+  });
+};
 
 const readDeletedUsers = (): string[] => {
   try {
@@ -48,55 +61,87 @@ const readDeletedUsers = (): string[] => {
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [appUser, setAppUser] = useState<AppUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(false);
+  const [usersReady, setUsersReady] = useState(false);
+  const [remoteUsers, setRemoteUsers] = useState<AppUser[]>(() => readUsers());
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
       setUser(nextUser);
-      if (nextUser?.email) {
-        const email = nextUser.email.toLowerCase();
-        if (readDeletedUsers().includes(email)) {
-          auth.signOut();
-          setAppUser(null);
-          setLoading(false);
-          return;
-        }
-        const users = readUsers();
-        const existing = users.find((item) => item.email.toLowerCase() === email);
-        const isSuperAdmin = email === adminEmail;
-        const profile: AppUser = existing ?? {
-          id: nextUser.uid,
-          uid: nextUser.uid,
-          fullName: nextUser.displayName || (isSuperAdmin ? "Super Admin" : "Employee"),
-          username: email.split("@")[0],
-          email,
-          phone: nextUser.phoneNumber || "",
-          designation: isSuperAdmin ? "Super Admin" : "Employee",
-          status: "active",
-          createdAt: new Date().toISOString(),
-          lastLogin: new Date().toISOString(),
-          photoUrl: nextUser.photoURL || "",
-          permissions: isSuperAdmin ? allPermissions : defaultEmployeePermissions,
-          isSuperAdmin,
-        };
-        const normalized = {
-          ...profile,
-          uid: nextUser.uid,
-          lastLogin: new Date().toISOString(),
-          photoUrl: profile.photoUrl || nextUser.photoURL || "",
-          isSuperAdmin,
-          permissions: isSuperAdmin ? allPermissions : profile.permissions,
-        };
-        writeUsers(existing ? users.map((item) => item.id === existing.id ? normalized : item) : [normalized, ...users]);
-        setAppUser(normalized);
-      } else {
-        setAppUser(null);
-      }
-      setLoading(false);
+      setAuthReady(true);
     });
 
     return unsubscribe;
   }, []);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      usersStateDoc,
+      (snapshot) => {
+        const users = (snapshot.data()?.value as AppUser[] | undefined) ?? readUsers();
+        setRemoteUsers(users);
+        writeUsers(users);
+        setUsersReady(true);
+      },
+      (error) => {
+        console.warn("Unable to load users from Firestore", error);
+        setRemoteUsers(readUsers());
+        setUsersReady(true);
+      },
+    );
+
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!authReady || !usersReady) return;
+
+    if (!user?.email) {
+      setAppUser(null);
+      return;
+    }
+
+    const email = user.email.toLowerCase();
+    if (readDeletedUsers().includes(email)) {
+      auth.signOut();
+      setAppUser(null);
+      return;
+    }
+
+    const existing = remoteUsers.find((item) => item.email.toLowerCase() === email);
+    const isSuperAdmin = email === adminEmail;
+    const profile: AppUser = existing ?? {
+      id: user.uid,
+      uid: user.uid,
+      fullName: user.displayName || (isSuperAdmin ? "Super Admin" : "Employee"),
+      username: email.split("@")[0],
+      email,
+      phone: user.phoneNumber || "",
+      designation: isSuperAdmin ? "Super Admin" : "Employee",
+      status: "active",
+      createdAt: new Date().toISOString(),
+      lastLogin: new Date().toISOString(),
+      photoUrl: user.photoURL || "",
+      permissions: isSuperAdmin ? allPermissions : defaultEmployeePermissions,
+      isSuperAdmin,
+    };
+    const normalized: AppUser = {
+      ...profile,
+      uid: user.uid,
+      lastLogin: new Date().toISOString(),
+      photoUrl: profile.photoUrl || user.photoURL || "",
+      isSuperAdmin,
+      permissions: isSuperAdmin ? allPermissions : profile.permissions,
+    };
+    const nextUsers = existing
+      ? remoteUsers.map((item) => item.id === existing.id ? normalized : item)
+      : [normalized, ...remoteUsers];
+
+    writeUsers(nextUsers);
+    syncUsers(nextUsers);
+    setRemoteUsers(nextUsers);
+    setAppUser(normalized);
+  }, [authReady, usersReady, user]);
 
   const role = user
     ? user.email?.toLowerCase() === adminEmail
@@ -117,6 +162,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     logStaffActivity(user, role, "auth.login", "User signed in");
     sessionStorage.setItem(marker, "1");
   }, [user, role, appUser?.status]);
+  const loading = !authReady || !usersReady;
   const value = useMemo(
     () => ({ user, loading, role, isAdmin: role === "admin", appUser, permissions, hasPermission }),
     [user, loading, role, appUser, permissions],

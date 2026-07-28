@@ -49,6 +49,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Label } from "../../components/ui/label";
 import { useAuth } from "../../auth/auth-context";
+import { getRepairDueState, inactiveRepairStatuses, labelForRepairStatus } from "../../utils/repair-status";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
   received: { label: "Received", variant: "secondary", icon: Clock },
@@ -70,6 +71,24 @@ const priorityColors: Record<string, string> = {
   low: "text-success",
   medium: "text-warning",
   high: "text-destructive",
+  urgent: "text-destructive",
+};
+
+const dueBadgeClasses = {
+  neutral: "border-border bg-background text-foreground",
+  success: "border-success/30 bg-success/10 text-success",
+  warning: "border-warning/40 bg-warning/10 text-warning",
+  destructive: "border-destructive/40 bg-destructive/10 text-destructive",
+  muted: "border-border bg-muted text-muted-foreground",
+};
+
+const statusBadgeClasses: Record<string, string> = {
+  completed: "border-success/30 bg-success/10 text-success",
+  ready: "border-success/30 bg-success/10 text-success",
+  delivered: "border-border bg-muted text-muted-foreground",
+  cancelled: "border-border bg-muted text-muted-foreground",
+  dead: "border-destructive/40 bg-destructive/10 text-destructive",
+  scrap: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
 export function RepairTickets() {
@@ -109,7 +128,7 @@ export function RepairTickets() {
   };
 
   const inProgressCount = tickets.filter((ticket) =>
-    ["received", "diagnosing", "repairing", "testing", "pending"].includes(ticket.status),
+    !inactiveRepairStatuses.has(ticket.status),
   ).length;
   const readyCount = tickets.filter((ticket) => ticket.status === "ready").length;
   const waitingPartsCount = tickets.filter((ticket) => ticket.status === "waiting_parts").length;
@@ -238,6 +257,7 @@ export function RepairTickets() {
                 <SelectItem value="to_return">To Return</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="delivered">Delivered</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
               </SelectContent>
             </Select>
             <Select value={priorityFilter} onValueChange={setPriorityFilter}>
@@ -270,6 +290,7 @@ export function RepairTickets() {
                   <TableHead>Priority</TableHead>
                   <TableHead>Technician</TableHead>
                   <TableHead>Est. Completion</TableHead>
+                  <TableHead>Remaining Days</TableHead>
                   <TableHead>Amount</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
@@ -283,8 +304,9 @@ export function RepairTickets() {
                   </TableRow>
                 ) : (
                   filteredTickets.map((ticket) => {
-                    const status = statusConfig[ticket.status];
+                    const status = statusConfig[ticket.status] ?? { label: labelForRepairStatus(ticket.status), variant: "outline" as const, icon: Clock };
                     const StatusIcon = status.icon;
+                    const dueState = getRepairDueState(ticket);
                     return (
                       <TableRow key={ticket.id}>
                         <TableCell className="font-medium">{ticket.id}</TableCell>
@@ -308,7 +330,7 @@ export function RepairTickets() {
                         <TableCell>{ticket.device}</TableCell>
                         <TableCell className="max-w-[200px] truncate">{ticket.issue}</TableCell>
                         <TableCell>
-                          <Badge variant={status.variant} className="gap-1">
+                          <Badge variant="outline" className={`gap-1 ${statusBadgeClasses[ticket.status] ?? ""}`}>
                             <StatusIcon className="h-3 w-3" />
                             {status.label}
                           </Badge>
@@ -322,6 +344,7 @@ export function RepairTickets() {
                         </TableCell>
                         <TableCell>{ticket.technician}</TableCell>
                         <TableCell>{ticket.estimatedCompletion}</TableCell>
+                        <TableCell><Badge variant="outline" className={dueBadgeClasses[dueState.tone]}>{dueState.label}</Badge></TableCell>
                         <TableCell>₨{ticket.amount.toLocaleString()}</TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">

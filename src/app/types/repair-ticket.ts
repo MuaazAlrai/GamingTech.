@@ -13,6 +13,12 @@ export type RepairTicket = {
   createdAt: string;
   estimatedCompletion: string;
   amount: number;
+  category?: string;
+  deviceNumber?: string;
+  deviceColor?: string;
+  labourCharges?: number;
+  discount?: number;
+  paidAmount?: number;
   customerPhone?: string;
   customerDescription?: string;
   brand?: string;
@@ -33,6 +39,10 @@ export type RepairTimelineEvent = {
   date: string;
   status: string;
   note: string;
+  technician?: string;
+  diagnosis?: string;
+  partsAdded?: string;
+  progress?: number;
 };
 
 export type RepairPartUsed = {

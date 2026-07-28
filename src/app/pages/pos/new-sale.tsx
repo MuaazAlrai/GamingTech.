@@ -4,7 +4,6 @@ import { ArrowLeft, Plus, ReceiptText, Search, ShoppingCart, Trash2 } from "luci
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent } from "../../components/ui/card";
-import { Checkbox } from "../../components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -225,8 +224,6 @@ export function NewSale() {
               </div>
             </div>
           )}
-
-          <label className="flex w-fit items-center gap-2 rounded border bg-white px-3 py-2 text-sm"><Checkbox />Formula</label>
 
           <div className="overflow-x-auto rounded-lg border">
             <table className="w-full min-w-[980px] text-sm">

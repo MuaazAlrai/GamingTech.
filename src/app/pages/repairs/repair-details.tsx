@@ -29,6 +29,7 @@ import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { Customer } from "../../types/customer";
 import type { RepairPartUsed, RepairTicket } from "../../types/repair-ticket";
 import { printRepairLabel } from "../../utils/print-repair-label";
+import { getRepairDueState, getTimelineProgress, labelForRepairStatus, progressForRepairStatus } from "../../utils/repair-status";
 
 const statusOptions = [
   { value: "received", label: "Received", progress: 10 },
@@ -46,7 +47,7 @@ const statusOptions = [
   { value: "scrap", label: "SCRAP", progress: 100 },
 ];
 
-const labelForStatus = (value: string) => statusOptions.find((item) => item.value === value)?.label ?? value;
+const labelForStatus = labelForRepairStatus;
 const money = (value: number) => `Rs ${value.toLocaleString()}`;
 
 export function RepairDetails() {
@@ -84,10 +85,17 @@ export function RepairDetails() {
   }
 
   const parts = ticket.partsUsed ?? [];
-  const timeline = ticket.timeline ?? [{ date: ticket.createdAt, status: ticket.status, note: "Ticket created." }];
-  const progress = statusOptions.find((item) => item.value === ticket.status)?.progress ?? 20;
+  const timeline = [...(ticket.timeline ?? [{ date: ticket.createdAt, status: ticket.status, note: "Ticket created.", technician: ticket.technician, progress: progressForRepairStatus(ticket.status) }])]
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const progress = progressForRepairStatus(ticket.status);
+  const dueState = getRepairDueState(ticket);
   const partsTotal = parts.reduce((sum, part) => sum + part.quantity * part.cost, 0);
-  const total = Math.max(ticket.amount, partsTotal);
+  const labourCharges = ticket.labourCharges ?? Math.max(0, ticket.amount - partsTotal);
+  const discount = ticket.discount ?? 0;
+  const total = Math.max(0, partsTotal + labourCharges - discount);
+  const paidAmount = ticket.paidAmount ?? 0;
+  const remainingBalance = Math.max(0, total - paidAmount);
+  const paymentStatus = remainingBalance <= 0 ? "Paid" : paidAmount > 0 ? "Partially Paid" : "Unpaid";
 
   const updateTicket = (updater: (current: RepairTicket) => RepairTicket) => {
     setTickets((current) => current.map((item) => item.id === ticket.id ? updater(item) : item));
@@ -99,7 +107,7 @@ export function RepairDetails() {
       ...current,
       status,
       openStatus: ["completed", "delivered", "dead", "scrap"].includes(status) ? "Closed" : "Open",
-      timeline: [{ date: new Date().toISOString(), status, note }, ...(current.timeline ?? [])],
+      timeline: [{ date: new Date().toISOString(), status, note, technician: current.technician, progress: progressForRepairStatus(status) }, ...(current.timeline ?? [])],
     }));
     setStatusNote("");
     toast.success("Repair status updated.");
@@ -149,7 +157,7 @@ export function RepairDetails() {
     updateTicket((current) => ({
       ...current,
       partsUsed: [part, ...(current.partsUsed ?? [])],
-      timeline: [{ date: new Date().toISOString(), status: current.status, note: `Part added: ${part.name} x${part.quantity}.` }, ...(current.timeline ?? [])],
+      timeline: [{ date: new Date().toISOString(), status: current.status, note: `Part added: ${part.name} x${part.quantity}.`, technician: current.technician, partsAdded: `${part.name} x${part.quantity}`, progress: progressForRepairStatus(current.status) }, ...(current.timeline ?? [])],
     }));
     setPartForm({ name: "", quantity: "1", cost: "0" });
     toast.success("Part added to repair.");
@@ -182,12 +190,55 @@ export function RepairDetails() {
 
       <Card><CardContent className="grid gap-4 p-5 md:grid-cols-4"><div className="rounded-lg border bg-primary/5 p-4"><p className="text-sm text-muted-foreground">Ticket Number</p><p className="text-xl font-bold text-primary">{ticket.ticketNumber || ticket.id}</p><p className="mt-1 text-xs text-muted-foreground">Device ka number</p></div><div className="rounded-lg border bg-primary/5 p-4"><p className="text-sm text-muted-foreground">Job Number</p><p className="text-xl font-bold text-primary">{ticket.jobNumber || "-"}</p><p className="mt-1 text-xs text-muted-foreground">Customer ka kaam</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Name</p><p className="font-semibold">{ticket.customer}</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Phone</p><p className="font-semibold">{ticket.customerPhone || customer?.phone || "-"}</p></div></CardContent></Card>
 
+      <Card>
+        <CardHeader><CardTitle>Repair Summary</CardTitle></CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {[
+            ["Customer Name", ticket.customer],
+            ["Customer Phone", ticket.customerPhone || customer?.phone || "-"],
+            ["Customer Email", ticket.customerEmail || customer?.email || "-"],
+            ["Customer Address", ticket.customerAddress || customer?.address || "-"],
+            ["Invoice Number", ticket.ticketNumber || ticket.id],
+            ["Device Number", ticket.deviceNumber || ticket.repairId || ticket.jobNumber || "-"],
+            ["Device Type", ticket.device],
+            ["Device Category", ticket.category || "-"],
+            ["Brand", ticket.brand || "-"],
+            ["Model", ticket.model || "-"],
+            ["Serial Number", ticket.serialNumber || "-"],
+            ["Device Colour", ticket.deviceColor || "-"],
+            ["Accessories Received", ticket.accessories || "-"],
+            ["Customer Complaint", ticket.issueDescription || ticket.issue],
+            ["Device Condition", (ticket.condition ?? []).join(", ") || ticket.conditionComment || "-"],
+            ["Assigned Technician", ticket.technician || "Unassigned"],
+            ["Current Status", labelForStatus(ticket.status)],
+            ["Progress Percentage", `${progress}%`],
+            ["Priority", ticket.priority],
+            ["Received Date", new Date(ticket.createdAt).toLocaleString()],
+            ["Expected Return Date", ticket.estimatedCompletion || "-"],
+            ["Remaining Days", dueState.label],
+            ["Estimated Cost", money(ticket.amount)],
+            ["Parts Total", money(partsTotal)],
+            ["Labour Charges", money(labourCharges)],
+            ["Discount", money(discount)],
+            ["Grand Total", money(total)],
+            ["Paid Amount", money(paidAmount)],
+            ["Remaining Balance", money(remainingBalance)],
+            ["Payment Status", paymentStatus],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-md border p-3">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <p className="mt-1 break-words text-sm font-medium">{value}</p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Tabs defaultValue="details" className="w-full">
             <TabsList className="grid w-full grid-cols-3"><TabsTrigger value="details">Details</TabsTrigger><TabsTrigger value="timeline">Timeline</TabsTrigger><TabsTrigger value="parts">Parts Used</TabsTrigger></TabsList>
             <TabsContent value="details" className="space-y-6"><Card><CardHeader><CardTitle>Device Information</CardTitle></CardHeader><CardContent className="space-y-4"><div className="grid grid-cols-2 gap-4"><div><p className="text-sm text-muted-foreground">Device</p><p className="font-medium">{ticket.device}</p></div><div><p className="text-sm text-muted-foreground">Brand</p><p className="font-medium">{ticket.brand || "-"}</p></div><div><p className="text-sm text-muted-foreground">Model</p><p className="font-medium">{ticket.model || "-"}</p></div><div><p className="text-sm text-muted-foreground">Serial Number</p><p className="font-medium">{ticket.serialNumber || "-"}</p></div></div><Separator /><div><p className="mb-2 text-sm text-muted-foreground">Accessories Included</p><p className="font-medium">{ticket.accessories || "-"}</p></div></CardContent></Card><Card><CardHeader><CardTitle>Problem Description</CardTitle></CardHeader><CardContent className="space-y-4"><div><p className="mb-2 text-sm text-muted-foreground">Issue Title</p><p className="text-lg font-medium">{ticket.issue}</p></div><Separator /><div><p className="mb-2 text-sm text-muted-foreground">Detailed Description</p><p className="text-sm">{ticket.issueDescription || "-"}</p></div><Separator /><div><p className="mb-2 text-sm text-muted-foreground">Device Condition</p><div className="flex flex-wrap gap-2">{(ticket.condition ?? []).length ? ticket.condition?.map((cond) => <Badge key={cond} variant="outline">{cond}</Badge>) : <span className="text-sm text-muted-foreground">No condition notes</span>}</div></div><div><p className="mb-2 text-sm text-muted-foreground">Condition Comment</p><p className="text-sm">{ticket.conditionComment || "-"}</p></div></CardContent></Card></TabsContent>
-            <TabsContent value="timeline"><Card><CardHeader><CardTitle>Repair Timeline</CardTitle></CardHeader><CardContent><div className="space-y-6">{timeline.map((event, index) => <div key={`${event.date}-${index}`} className="flex gap-4"><div className="flex flex-col items-center"><div className="h-3 w-3 rounded-full bg-primary" />{index !== timeline.length - 1 && <div className="mt-2 h-full w-0.5 bg-border" />}</div><div className="flex-1 pb-6"><div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><p className="font-medium">{labelForStatus(event.status)}</p><p className="text-sm text-muted-foreground">{new Date(event.date).toLocaleString()}</p></div><p className="text-sm text-muted-foreground">{event.note}</p></div></div>)}</div></CardContent></Card></TabsContent>
+            <TabsContent value="timeline"><Card><CardHeader><CardTitle>Repair Timeline and Progress</CardTitle></CardHeader><CardContent><div className="mb-6 grid gap-2 md:grid-cols-4">{timeline.map((event, index) => { const eventProgress = getTimelineProgress(event); return <div key={`${event.date}-step-${index}`} className="rounded-md border p-3"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-sm font-medium">{labelForStatus(event.status)}</span><span className="text-xs text-muted-foreground">{eventProgress}%</span></div><Progress value={eventProgress} className="h-2" /><p className="mt-2 text-xs text-muted-foreground">{new Date(event.date).toLocaleDateString()}</p></div>; })}</div><div className="space-y-6">{timeline.map((event, index) => <div key={`${event.date}-${index}`} className="flex gap-4"><div className="flex flex-col items-center"><div className="h-3 w-3 rounded-full bg-primary" />{index !== timeline.length - 1 && <div className="mt-2 h-full w-0.5 bg-border" />}</div><div className="flex-1 pb-6"><div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{labelForStatus(event.status)}</p><p className="text-xs text-muted-foreground">Progress {getTimelineProgress(event)}%{event.technician ? ` · ${event.technician}` : ""}</p></div><p className="text-sm text-muted-foreground">{new Date(event.date).toLocaleString()}</p></div>{event.diagnosis && <p className="text-sm"><span className="font-medium">Diagnosis/work:</span> {event.diagnosis}</p>}{event.partsAdded && <p className="text-sm"><span className="font-medium">Parts added:</span> {event.partsAdded}</p>}<p className="text-sm text-muted-foreground">{event.note}</p></div></div>)}</div></CardContent></Card></TabsContent>
             <TabsContent value="parts" className="space-y-4"><Card><CardHeader><CardTitle>Parts & Materials</CardTitle></CardHeader><CardContent className="space-y-4"><form onSubmit={addPart} className="grid gap-3 md:grid-cols-[1fr_100px_140px_auto]"><Input value={partForm.name} onChange={(event) => setPartForm({ ...partForm, name: event.target.value })} placeholder="Part name" /><Input type="number" min="1" value={partForm.quantity} onChange={(event) => setPartForm({ ...partForm, quantity: event.target.value })} /><Input type="number" min="0" value={partForm.cost} onChange={(event) => setPartForm({ ...partForm, cost: event.target.value })} /><Button type="submit" className="gap-2"><Plus className="h-4 w-4" />Add</Button></form>{parts.length === 0 ? <p className="rounded-md border p-4 text-sm text-muted-foreground">No parts added yet.</p> : parts.map((part) => <div key={part.id} className="flex items-center justify-between rounded-lg border p-4"><div><p className="font-medium">{part.name}</p><p className="text-sm text-muted-foreground">Quantity: {part.quantity}</p></div><p className="font-medium">{money(part.quantity * part.cost)}</p></div>)}</CardContent></Card></TabsContent>
           </Tabs>
         </div>

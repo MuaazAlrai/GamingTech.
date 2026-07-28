@@ -12,6 +12,7 @@ import {
   ArrowRight,
   FileText,
   Boxes,
+  Bell,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -36,6 +37,7 @@ import type { GpuItem } from "../types/gpu-item";
 import type { PosSale } from "../types/pos-sale";
 import type { RepairTicket } from "../types/repair-ticket";
 import { useAuth } from "../auth/auth-context";
+import { getRepairDueState, labelForRepairStatus } from "../utils/repair-status";
 
 type Customer = {
   id: string;
@@ -87,6 +89,14 @@ const formatRelativeTime = (date: string) => {
   return `${Math.round(hours / 24)} days ago`;
 };
 
+const notificationToneClasses = {
+  neutral: "border-border bg-background text-foreground",
+  success: "border-success/30 bg-success/10 text-success",
+  warning: "border-warning/40 bg-warning/10 text-warning",
+  destructive: "border-destructive/40 bg-destructive/10 text-destructive",
+  muted: "border-border bg-muted text-muted-foreground",
+};
+
 export function Dashboard() {
   const { isAdmin } = useAuth();
   const [tickets] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
@@ -107,6 +117,26 @@ export function Dashboard() {
   );
   const waitingParts = tickets.filter((ticket) => ticket.status === "waiting_parts");
   const readyTickets = tickets.filter((ticket) => ticket.status === "ready");
+  const repairNotifications = tickets.flatMap((ticket) => {
+    const due = getRepairDueState(ticket);
+    const unpaid = Math.max(0, (ticket.amount ?? 0) - (ticket.paidAmount ?? 0));
+    const reasons = [
+      due.isDueToday && "Due today",
+      due.isDueTomorrow && "Due tomorrow",
+      due.isWithinThreeDays && !due.isDueToday && !due.isDueTomorrow && "Due within 3 days",
+      due.isOverdue && "Overdue",
+      ticket.status === "waiting_approval" && "Awaiting customer approval",
+      ticket.status === "waiting_parts" && "Awaiting parts",
+      ticket.status === "ready" && "Ready for pickup",
+      ticket.priority === "high" && "High priority repair",
+      ticket.status === "completed" && unpaid > 0 && "Completed with unpaid balance",
+    ].filter(Boolean) as string[];
+
+    return reasons.map((reason) => ({ id: `${ticket.id}-${reason}`, reason, ticket, due }));
+  }).sort((a, b) => {
+    const priority = (item: typeof a) => item.due.isOverdue ? 0 : item.due.isDueToday ? 1 : item.due.isDueTomorrow ? 2 : 3;
+    return priority(a) - priority(b) || (a.ticket.estimatedCompletion || "").localeCompare(b.ticket.estimatedCompletion || "");
+  });
   const todaysRevenue = todaysSales.reduce((sum, sale) => sum + sale.total, 0);
   const monthlyRevenue = completedSales
     .filter((sale) => sale.date.slice(0, 7) === currentMonth)
@@ -320,6 +350,44 @@ export function Dashboard() {
           );
         })}
       </div>
+
+      <Card className="shadow-sm">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2"><Bell className="h-5 w-5" />Repair Notifications</CardTitle>
+            <CardDescription>Due dates, waiting jobs, ready devices, and unpaid completed repairs</CardDescription>
+          </div>
+          <Link to="/repairs"><Button variant="ghost" size="sm">View Repairs<ArrowRight className="ml-2 h-4 w-4" /></Button></Link>
+        </CardHeader>
+        <CardContent>
+          {repairNotifications.length === 0 ? (
+            <p className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">No repair notifications right now.</p>
+          ) : (
+            <div className="grid gap-3">
+              {repairNotifications.slice(0, 12).map(({ id, reason, ticket, due }) => (
+                <Link key={id} to={`/repairs/${ticket.id}`} className="grid gap-3 rounded-md border p-3 transition-colors hover:bg-accent/40 md:grid-cols-[180px_1fr_150px_150px]">
+                  <div>
+                    <Badge variant="outline" className={notificationToneClasses[due.tone]}>{reason}</Badge>
+                    <p className="mt-2 text-sm font-semibold">{ticket.ticketNumber || ticket.id}</p>
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium">{ticket.customer}</p>
+                    <p className="truncate text-sm text-muted-foreground">{ticket.device}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <p className="text-sm font-medium">{labelForRepairStatus(ticket.status)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">{ticket.estimatedCompletion || "No expected date"}</p>
+                    <p className={`text-sm font-medium ${due.tone === "destructive" ? "text-destructive" : due.tone === "warning" ? "text-warning" : due.tone === "success" ? "text-success" : ""}`}>{due.label}</p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {isAdmin && <>
       {/* Charts Section */}
