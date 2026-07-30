@@ -263,8 +263,8 @@ export function RootLayout() {
       </header>
 
       {/* Main Content */}
-      <main className={cn("min-w-0 max-w-full overflow-x-hidden", sidebarHidden ? "lg:ml-0" : "lg:ml-64", isMobile ? "pt-16" : "lg:pt-[72px]")}>
-        <div className="min-w-0 max-w-full p-4 lg:p-6">
+      <main className={cn("min-w-0 max-w-full overflow-x-auto", sidebarHidden ? "lg:ml-0" : "lg:ml-64", isMobile ? "pt-16" : "lg:pt-[72px]")}>
+        <div className="min-w-0 max-w-full overflow-x-auto p-4 lg:p-6">
           <Outlet />
         </div>
       </main>

@@ -1,70 +1,52 @@
-import { useState } from "react";
-import { Link, useSearchParams } from "react-router";
-import { Search, Plus, AlertTriangle, Package, TrendingUp, Pencil, Trash2, CalendarDays } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router";
+import { Eye, Search, Package, TrendingUp, Pencil, Trash2 } from "lucide-react";
+import { useAuth } from "../../auth/auth-context";
+import { DataPagination } from "../../components/shared/data-pagination";
+import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { Badge } from "../../components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../../components/ui/table";
-import { Progress } from "../../components/ui/progress";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../../components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { usePagination } from "../../hooks/use-pagination";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { StockAdjustment } from "../../types/part";
-import { useAuth } from "../../auth/auth-context";
+import type { PosSale } from "../../types/pos-sale";
+import type { RepairTicket } from "../../types/repair-ticket";
+import { formatAmount } from "../../utils/formatting";
+import { buildRepairInventoryItems, type RepairInventoryItem } from "../../utils/repair-inventory";
 
-type InventoryItem = {
-  id: string;
-  name: string;
-  category: string;
-  sku: string;
-  stock: number;
-  reorderLevel: number;
-  unit: string;
-  costPrice: number;
-  sellingPrice: number;
-  supplier: string;
-  location: string;
-  status?: string;
-  progress?: number;
-  timeline?: { date: string; status: string; note: string; progress: number }[];
-};
+type InventoryItem = RepairInventoryItem & { id: string };
 
 const initialItems: InventoryItem[] = [];
 const statusProgress: Record<string, number> = {
-  "Received": 10,
+  Received: 10,
   "Work Started": 25,
   "In Progress": 50,
-  "Testing": 75,
-  "Completed": 100,
+  Testing: 75,
+  Completed: 100,
+};
+
+const money = (value: number) => formatAmount(value, 0);
+const getInventoryDisplayName = (part: InventoryItem) => {
+  const name = part.name.trim();
+  const category = part.category.trim();
+  const prefix = `${category} - `;
+
+  return name.toLowerCase().startsWith(prefix.toLowerCase()) ? name.slice(prefix.length).trim() : name;
 };
 
 export function PartsInventory() {
+  const navigate = useNavigate();
   const { hasPermission } = useAuth();
-  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [parts, setParts] = usePersistentState<InventoryItem[]>("gamingtech.parts", initialItems);
+  const [repairs, setRepairs] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
+  const [invoices] = usePersistentState<PosSale[]>("gamingtech.posSales", []);
   const [, setStockAdjustments] = usePersistentState<StockAdjustment[]>("gamingtech.stockAdjustments", []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingPart, setEditingPart] = useState<InventoryItem | null>(null);
@@ -75,32 +57,13 @@ export function PartsInventory() {
     stock: "0",
     reorderLevel: "5",
     unit: "pcs",
-    costPrice: "0",
-    sellingPrice: "0",
+    totalAmount: "0",
+    receivedAmount: "0",
+    pendingAmount: "0",
     supplier: "",
-    location: "",
     status: "Work Started",
     progress: "25",
   });
-
-  const openAddDialog = () => {
-    setEditingPart(null);
-    setFormData({
-      name: "",
-      category: "PC Parts",
-      sku: "",
-      stock: "0",
-      reorderLevel: "5",
-      unit: "pcs",
-      costPrice: "0",
-      sellingPrice: "0",
-      supplier: "",
-      location: "",
-      status: "Work Started",
-      progress: "25",
-    });
-    setDialogOpen(true);
-  };
 
   const openEditDialog = (part: InventoryItem) => {
     setEditingPart(part);
@@ -111,10 +74,10 @@ export function PartsInventory() {
       stock: String(part.stock),
       reorderLevel: String(part.reorderLevel),
       unit: part.unit,
-      costPrice: String(part.costPrice),
-      sellingPrice: String(part.sellingPrice),
+      totalAmount: String(part.totalAmount ?? part.costPrice ?? 0),
+      receivedAmount: String(part.receivedAmount ?? part.sellingPrice ?? 0),
+      pendingAmount: String(part.pendingAmount ?? 0),
       supplier: part.supplier,
-      location: part.location,
       status: part.status ?? "Work Started",
       progress: String(part.progress ?? statusProgress[part.status ?? "Work Started"] ?? 25),
     });
@@ -123,39 +86,49 @@ export function PartsInventory() {
 
   const savePart = (event: React.FormEvent) => {
     event.preventDefault();
+    if (!editingPart) return;
+
+    const existingTimeline = editingPart.timeline ?? [];
     const nextPart: InventoryItem = {
-      id: editingPart?.id ?? `PRT-${String(parts.length + 1).padStart(3, "0")}`,
+      ...editingPart,
       name: formData.name,
       category: formData.category,
       sku: formData.sku,
       stock: Number(formData.stock),
       reorderLevel: Number(formData.reorderLevel),
       unit: formData.unit,
-      costPrice: Number(formData.costPrice),
-      sellingPrice: Number(formData.sellingPrice),
+      costPrice: Number(formData.totalAmount),
+      sellingPrice: Number(formData.receivedAmount),
+      totalAmount: Number(formData.totalAmount),
+      receivedAmount: Number(formData.receivedAmount),
+      pendingAmount: Number(formData.pendingAmount),
       supplier: formData.supplier,
-      location: formData.location,
       status: formData.status,
       progress: Math.max(0, Math.min(Number(formData.progress), 100)),
-      timeline: editingPart?.timeline ?? [],
+      source: "part",
+      timeline: existingTimeline,
     };
-    const timelineNote = editingPart
-      ? `Status updated to ${nextPart.status}. Progress ${nextPart.progress}%.`
-      : "Inventory item added and work timeline started.";
-    const lastTimeline = editingPart?.timeline?.[0];
-    nextPart.timeline = !editingPart || lastTimeline?.status !== nextPart.status || lastTimeline?.progress !== nextPart.progress
-      ? [{ date: new Date().toISOString(), status: nextPart.status ?? "Work Started", progress: nextPart.progress ?? 25, note: timelineNote }, ...(editingPart?.timeline ?? [])]
-      : editingPart.timeline;
 
-    if (editingPart && nextPart.stock !== editingPart.stock) {
-      setStockAdjustments((current) => [{ id: `ADJ-${Date.now()}-${nextPart.id}`, partId: nextPart.id, partName: nextPart.name, date: new Date().toISOString(), quantityChange: nextPart.stock - editingPart.stock, previousStock: editingPart.stock, newStock: nextPart.stock, reason: "manual", reference: "Adjusted from product editor" }, ...current]);
+    const lastTimeline = existingTimeline[0];
+    nextPart.timeline = lastTimeline?.status !== nextPart.status || lastTimeline?.progress !== nextPart.progress
+      ? [{ date: new Date().toISOString(), status: nextPart.status ?? "Work Started", progress: nextPart.progress ?? 25, note: `Status updated to ${nextPart.status}. Progress ${nextPart.progress}%.` }, ...existingTimeline]
+      : existingTimeline;
+
+    if (nextPart.stock !== editingPart.stock) {
+      setStockAdjustments((current) => [{
+        id: `ADJ-${Date.now()}-${nextPart.id}`,
+        partId: nextPart.id,
+        partName: nextPart.name,
+        date: new Date().toISOString(),
+        quantityChange: nextPart.stock - editingPart.stock,
+        previousStock: editingPart.stock,
+        newStock: nextPart.stock,
+        reason: "manual",
+        reference: "Adjusted from inventory editor",
+      }, ...current]);
     }
 
-    setParts((current) =>
-      editingPart
-        ? current.map((part) => (part.id === editingPart.id ? nextPart : part))
-        : [...current, nextPart],
-    );
+    setParts((current) => current.map((part) => (part.id === editingPart.id ? nextPart : part)));
     setDialogOpen(false);
   };
 
@@ -163,54 +136,84 @@ export function PartsInventory() {
     setParts((current) => current.filter((part) => part.id !== id));
   };
 
+  const deleteInventoryItem = (part: InventoryItem) => {
+    if (part.source === "repair" && part.linkedRepairId) {
+      if (!window.confirm(`Delete ${part.name}? This will remove the linked repair ticket from inventory.`)) return;
+      setRepairs((current) => current.filter((repair) => repair.id !== part.linkedRepairId));
+      toast.success("Linked repair removed from inventory.");
+      return;
+    }
+
+    if (!window.confirm(`Delete ${part.name}?`)) return;
+    deletePart(part.id);
+    toast.success("Inventory item deleted.");
+  };
+
   const adjustStock = (part: InventoryItem) => {
-    const quantityChange = Number(window.prompt(`Enter stock adjustment for ${part.name}. Use a positive number to add or negative number to remove.`, "0"));
+    const quantityChange = Number(window.prompt(`Enter stock adjustment for ${part.name}. Use positive to add or negative to remove.`, "0"));
     if (!Number.isFinite(quantityChange) || quantityChange === 0) return;
     if (part.stock + quantityChange < 0) return window.alert("Stock cannot be less than zero.");
     const note = window.prompt("Reason / reference for this adjustment:", "Manual stock count") ?? "Manual stock count";
     setParts((current) => current.map((item) => item.id === part.id ? { ...item, stock: item.stock + quantityChange } : item));
-    setStockAdjustments((current) => [{ id: `ADJ-${Date.now()}-${part.id}`, partId: part.id, partName: part.name, date: new Date().toISOString(), quantityChange, previousStock: part.stock, newStock: part.stock + quantityChange, reason: "manual", reference: note }, ...current]);
+    setStockAdjustments((current) => [{
+      id: `ADJ-${Date.now()}-${part.id}`,
+      partId: part.id,
+      partName: part.name,
+      date: new Date().toISOString(),
+      quantityChange,
+      previousStock: part.stock,
+      newStock: part.stock + quantityChange,
+      reason: "manual",
+      reference: note,
+    }, ...current]);
   };
 
+  const repairInventoryItems = useMemo(
+    () => buildRepairInventoryItems(repairs, invoices),
+    [invoices, repairs],
+  );
+
   const filteredParts = parts.filter((part) => {
-    const matchesSearch =
-      part.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      part.sku.toLowerCase().includes(searchQuery.toLowerCase());
+    const query = searchQuery.toLowerCase();
+    const matchesSearch = !query || part.name.toLowerCase().includes(query) || part.sku.toLowerCase().includes(query) || part.supplier.toLowerCase().includes(query);
     const matchesCategory = categoryFilter === "all" || part.category === categoryFilter;
-    const matchesView = searchParams.get("view") === "low" ? part.stock <= part.reorderLevel : true;
-    return matchesSearch && matchesCategory && matchesView;
+    return matchesSearch && matchesCategory;
   });
 
-  const totalValue = parts.reduce((sum, part) => sum + part.stock * part.costPrice, 0);
-  const lowStockCount = parts.filter((p) => p.stock < p.reorderLevel).length;
-  const categoryCount = new Set(parts.map((part) => part.category)).size;
+  const filteredRepairItems = repairInventoryItems.filter((repairItem) => {
+    const query = searchQuery.toLowerCase();
+    const matchesSearch = !query
+      || repairItem.name.toLowerCase().includes(query)
+      || repairItem.sku.toLowerCase().includes(query)
+      || repairItem.invoiceNumber?.toLowerCase().includes(query)
+      || repairItem.supplier.toLowerCase().includes(query);
+    const matchesCategory = categoryFilter === "all" || repairItem.category === categoryFilter;
+    return matchesSearch && matchesCategory;
+  });
+
+  const inventoryItems = [...filteredRepairItems, ...filteredParts];
+  const inventoryPagination = usePagination(inventoryItems, 10);
+  const totalValue = inventoryItems.reduce((sum, item) => sum + (item.totalAmount ?? item.costPrice ?? 0), 0);
+  const categoryCount = new Set(inventoryItems.map((item) => item.category)).size;
 
   return (
     <div className="space-y-6 pb-20 lg:pb-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold">Inventory</h1>
-          <p className="text-muted-foreground mt-1">Manage all products, GPUs, stock levels, pricing, and locations</p>
-        </div>
-        <div className="flex gap-2">
-          {hasPermission("inventory.create") && <Button className="gap-2" onClick={openAddDialog}>
-            <Plus className="h-4 w-4" />
-            Add Inventory Item
-          </Button>}
+          <p className="mt-1 text-muted-foreground">Manage repair devices, amounts, and status progress.</p>
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Items</p>
-                <h3 className="text-2xl font-bold mt-1">{parts.length}</h3>
+                <h3 className="mt-1 text-2xl font-bold">{inventoryItems.length}</h3>
               </div>
-              <div className="bg-primary/10 text-primary p-3 rounded-lg">
+              <div className="rounded-lg bg-primary/10 p-3 text-primary">
                 <Package className="h-5 w-5" />
               </div>
             </div>
@@ -221,9 +224,9 @@ export function PartsInventory() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Inventory Value</p>
-                <h3 className="text-2xl font-bold mt-1">₨{(totalValue / 1000).toFixed(0)}K</h3>
+                <h3 className="mt-1 text-2xl font-bold">{money(totalValue)}</h3>
               </div>
-              <div className="bg-success/10 text-success p-3 rounded-lg">
+              <div className="rounded-lg bg-success/10 p-3 text-success">
                 <TrendingUp className="h-5 w-5" />
               </div>
             </div>
@@ -233,23 +236,10 @@ export function PartsInventory() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Low Stock</p>
-                <h3 className="text-2xl font-bold mt-1">{lowStockCount}</h3>
-              </div>
-              <div className="bg-warning/10 text-warning p-3 rounded-lg">
-                <AlertTriangle className="h-5 w-5" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
                 <p className="text-sm text-muted-foreground">Categories</p>
-                <h3 className="text-2xl font-bold mt-1">{categoryCount}</h3>
+                <h3 className="mt-1 text-2xl font-bold">{categoryCount}</h3>
               </div>
-              <div className="bg-accent/10 text-accent p-3 rounded-lg">
+              <div className="rounded-lg bg-accent/10 p-3 text-accent">
                 <Package className="h-5 w-5" />
               </div>
             </div>
@@ -259,37 +249,21 @@ export function PartsInventory() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Inventory Tools</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <Link to="/inventory/timeline" className="rounded-lg border bg-card p-4 transition hover:bg-muted">
-              <CalendarDays className="mb-3 h-6 w-6 text-warning" />
-              <p className="font-semibold">Timeline</p>
-              <p className="text-sm text-muted-foreground">Track item status and work progress</p>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Inventory List */}
-      <Card>
-        <CardHeader>
           <CardTitle>All Inventory Items</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-col md:flex-row gap-4 mb-6">
+          <div className="mb-6 flex flex-col gap-4 md:flex-row">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by item name or SKU..."
+                placeholder="Search by item, device number, invoice number, or customer..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 className="pl-10"
               />
             </div>
             <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-              <SelectTrigger className="w-full md:w-[200px]">
+              <SelectTrigger className="w-full md:w-[220px]">
                 <SelectValue placeholder="Category" />
               </SelectTrigger>
               <SelectContent>
@@ -304,103 +278,74 @@ export function PartsInventory() {
             </Select>
           </div>
 
-          <div className="rounded-md border overflow-x-auto">
+          <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Item Name</TableHead>
-                  <TableHead>SKU</TableHead>
+                  <TableHead>Device Number</TableHead>
                   <TableHead>Category</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Cost Price</TableHead>
-                  <TableHead>Selling Price</TableHead>
-                  <TableHead>Location</TableHead>
+                  <TableHead>Total Amount</TableHead>
+                  <TableHead>Received Amount</TableHead>
+                  <TableHead>Pending Amount</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredParts.length === 0 ? (
+                {inventoryItems.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
-                      No inventory items yet. Add your first item.
+                    <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                      No inventory items yet.
                     </TableCell>
                   </TableRow>
-                ) : (
-                filteredParts.map((part) => {
-                  const stockPercentage = (part.stock / part.reorderLevel) * 100;
-                  const isLowStock = part.stock < part.reorderLevel;
+                ) : inventoryPagination.pagedItems.map((part) => {
                   return (
                     <TableRow key={part.id}>
-                      <TableCell className="font-medium">{part.name}</TableCell>
-                      <TableCell className="text-muted-foreground">{part.sku}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{part.category}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <span className="font-medium">
-                              {part.stock} {part.unit}
-                            </span>
-                            {isLowStock && (
-                              <AlertTriangle className="h-4 w-4 text-warning" />
-                            )}
-                          </div>
-                          <Progress
-                            value={Math.min(stockPercentage, 100)}
-                            className="h-1.5"
-                          />
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="min-w-[150px] space-y-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <Badge variant={(part.progress ?? 25) >= 100 ? "default" : "secondary"}>
-                              {part.status ?? "Work Started"}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground">{part.progress ?? 25}%</span>
-                          </div>
-                          <Progress value={part.progress ?? 25} className="h-1.5" />
-                        </div>
-                      </TableCell>
-                      <TableCell>₨{part.costPrice.toLocaleString()}</TableCell>
-                      <TableCell>₨{part.sellingPrice.toLocaleString()}</TableCell>
-                      <TableCell className="text-muted-foreground">{part.location}</TableCell>
+                      <TableCell className="min-w-[220px] font-medium">{getInventoryDisplayName(part)}</TableCell>
+                      <TableCell className="min-w-[170px] text-muted-foreground">{part.sku}</TableCell>
+                      <TableCell className="min-w-[160px]"><Badge variant="outline">{part.category}</Badge></TableCell>
+                      <TableCell className="font-medium">{money(part.totalAmount ?? part.costPrice ?? 0)}</TableCell>
+                      <TableCell className="text-success">{money(part.receivedAmount ?? part.sellingPrice ?? 0)}</TableCell>
+                      <TableCell className="text-warning">{money(part.pendingAmount ?? 0)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
                           <Link to={`/inventory/${part.id}`}>
-                            <Button variant="ghost" size="sm">
-                            View Details
-                            </Button>
+                            <Button variant="outline" size="icon" className="app-action-icon view" title="View Inventory Item"><Eye className="h-4 w-4" /></Button>
                           </Link>
-                          {hasPermission("inventory.manage") && <Button variant="outline" size="sm" onClick={() => adjustStock(part)}>
-                            <TrendingUp className="mr-2 h-4 w-4" /> Adjust Stock
-                          </Button>}
-                          {hasPermission("inventory.edit") && <Button variant="outline" size="sm" onClick={() => openEditDialog(part)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                          </Button>}
-                          {hasPermission("inventory.delete") && <Button variant="destructive" size="sm" onClick={() => deletePart(part.id)}>
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </Button>}
+                          {hasPermission("inventory.edit") && (
+                            <Button variant="outline" size="icon" className="app-action-icon edit" title="Edit Inventory Item" onClick={() => part.source === "repair" && part.linkedRepairId ? navigate(`/repairs/${part.linkedRepairId}`) : openEditDialog(part)}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {hasPermission("inventory.delete") && (
+                            <Button variant="outline" size="icon" className="app-action-icon delete" title="Delete Inventory Item" onClick={() => deleteInventoryItem(part)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
                   );
-                })
-                )}
+                })}
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={inventoryPagination.page}
+            totalPages={inventoryPagination.totalPages}
+            startItem={inventoryPagination.startItem}
+            endItem={inventoryPagination.endItem}
+            totalItems={inventoryPagination.totalItems}
+            onPageChange={inventoryPagination.setPage}
+            label="inventory items"
+          />
         </CardContent>
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{editingPart ? "Edit Inventory Item" : "Add Inventory Item"}</DialogTitle>
+            <DialogTitle>Edit Inventory Item</DialogTitle>
           </DialogHeader>
           <form onSubmit={savePart} className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
@@ -409,28 +354,39 @@ export function PartsInventory() {
                 <Input id="partName" value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="partSku">SKU</Label>
+                <Label htmlFor="partSku">Device Number</Label>
                 <Input id="partSku" value={formData.sku} onChange={(event) => setFormData({ ...formData, sku: event.target.value })} required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="partCategory">Category</Label>
-                <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}><SelectTrigger id="partCategory"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="GPU">GPU</SelectItem><SelectItem value="Gaming Parts">Gaming Parts</SelectItem><SelectItem value="PC Parts">PC Parts</SelectItem><SelectItem value="Laptop Parts">Laptop Parts</SelectItem><SelectItem value="Mobile Parts">Mobile Parts</SelectItem><SelectItem value="Accessories">Accessories</SelectItem><SelectItem value="POS Products">POS Products</SelectItem></SelectContent></Select>
+                <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
+                  <SelectTrigger id="partCategory"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="GPU">GPU</SelectItem>
+                    <SelectItem value="Gaming Parts">Gaming Parts</SelectItem>
+                    <SelectItem value="PC Parts">PC Parts</SelectItem>
+                    <SelectItem value="Laptop Parts">Laptop Parts</SelectItem>
+                    <SelectItem value="Mobile Parts">Mobile Parts</SelectItem>
+                    <SelectItem value="Accessories">Accessories</SelectItem>
+                    <SelectItem value="POS Products">POS Products</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="partCustomer">Customer Name</Label>
                 <Input id="partCustomer" value={formData.supplier} onChange={(event) => setFormData({ ...formData, supplier: event.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="partCost">Cost Price</Label>
-                <Input id="partCost" type="number" value={formData.costPrice} onChange={(event) => setFormData({ ...formData, costPrice: event.target.value })} required />
+                <Label htmlFor="partTotal">Total Amount</Label>
+                <Input id="partTotal" type="number" value={formData.totalAmount} onChange={(event) => setFormData({ ...formData, totalAmount: event.target.value })} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="partUnit">Unit</Label>
-                <Input id="partUnit" value={formData.unit} onChange={(event) => setFormData({ ...formData, unit: event.target.value })} required />
+                <Label htmlFor="partReceived">Received Amount</Label>
+                <Input id="partReceived" type="number" value={formData.receivedAmount} onChange={(event) => setFormData({ ...formData, receivedAmount: event.target.value })} required />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="partLocation">Location</Label>
-                <Input id="partLocation" value={formData.location} onChange={(event) => setFormData({ ...formData, location: event.target.value })} />
+                <Label htmlFor="partPending">Pending Amount</Label>
+                <Input id="partPending" type="number" value={formData.pendingAmount} onChange={(event) => setFormData({ ...formData, pendingAmount: event.target.value })} required />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="partStatus">Status</Label>
@@ -448,7 +404,7 @@ export function PartsInventory() {
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
-              <Button type="submit">{editingPart ? "Save Changes" : "Add Item"}</Button>
+              <Button type="submit">Save Changes</Button>
             </DialogFooter>
           </form>
         </DialogContent>

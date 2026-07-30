@@ -7,6 +7,7 @@ type NumberKind = "device" | "invoice" | "serial";
 
 type NumberConfig = {
   prefix: string;
+  legacyPrefixes?: string[];
   minWidth: number;
   appStateKeys: string[];
   fields: string[];
@@ -14,7 +15,8 @@ type NumberConfig = {
 
 const configs: Record<NumberKind, NumberConfig> = {
   device: {
-    prefix: "TKT",
+    prefix: "DEV",
+    legacyPrefixes: ["TKT"],
     minWidth: 4,
     appStateKeys: ["gamingtech_repairTickets"],
     fields: ["ticketNumber", "id", "deviceNumber"],
@@ -49,6 +51,17 @@ function readSequence(value: unknown, prefix: string) {
   return Number.isSafeInteger(sequence) && sequence > 0 ? sequence : null;
 }
 
+function readAnySequence(value: unknown, config: NumberConfig) {
+  const prefixes = [config.prefix, ...(config.legacyPrefixes ?? [])];
+
+  for (const prefix of prefixes) {
+    const sequence = readSequence(value, prefix);
+    if (sequence !== null) return sequence;
+  }
+
+  return null;
+}
+
 function existingNumbersFromRecords(records: unknown, config: NumberConfig) {
   if (!Array.isArray(records)) return new Set<string>();
 
@@ -57,7 +70,7 @@ function existingNumbersFromRecords(records: unknown, config: NumberConfig) {
 
     for (const field of config.fields) {
       const value = (record as Record<string, unknown>)[field];
-      if (typeof value === "string" && readSequence(value, config.prefix) !== null) {
+      if (typeof value === "string" && readAnySequence(value, config) !== null) {
         numbers.add(value.trim().toUpperCase());
       }
     }
@@ -70,21 +83,10 @@ function latestSequenceFromRecords(records: unknown, config: NumberConfig) {
   let latest = 0;
 
   for (const value of existingNumbersFromRecords(records, config)) {
-    latest = Math.max(latest, readSequence(value, config.prefix) ?? 0);
+    latest = Math.max(latest, readAnySequence(value, config) ?? 0);
   }
 
   return latest;
-}
-
-async function readLocalAppState<T>(key: string, fallback: T) {
-  if (typeof window === "undefined") return fallback;
-
-  try {
-    const localValue = window.localStorage.getItem(key.replace(/_/g, "."));
-    return localValue ? (JSON.parse(localValue) as T) : fallback;
-  } catch {
-    return fallback;
-  }
 }
 
 export async function generateNextNumber(kind: NumberKind) {
@@ -159,8 +161,7 @@ export async function valueExists(kind: NumberKind, value: string, excludeId?: s
     const value = snapshot.data()?.value;
     return Array.isArray(value) ? value : [];
   });
-  const localRecords = (await Promise.all(config.appStateKeys.map((key) => readLocalAppState<RepairTicket[] | PosSale[]>(key, [])))).flat();
-  const records = [...remoteRecords, ...localRecords];
+  const records = remoteRecords;
   const normalizedValue = value.trim().toUpperCase();
 
   if (!Array.isArray(records)) return false;

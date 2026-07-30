@@ -14,8 +14,9 @@ import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { PosSale } from "../../types/pos-sale";
 import type { CashShift, StaffActivity } from "../../types/staff";
 import type { CustomerPayment } from "../../types/customer";
+import { formatAmount } from "../../utils/formatting";
 
-const money = (value: number) => `Rs ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+const money = (value: number) => formatAmount(value);
 
 export function StaffSecurity() {
   const { user, role, isAdmin } = useAuth();

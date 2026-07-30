@@ -14,10 +14,7 @@ import { InventoryDashboard } from "./pages/inventory/inventory-dashboard";
 import { GpuTimeline } from "./pages/inventory/gpu-timeline";
 import { CustomerDirectory } from "./pages/customers/customer-directory";
 import { CustomerProfile } from "./pages/customers/customer-profile";
-import { POSHome } from "./pages/pos/pos-home";
 import { NewSale } from "./pages/pos/new-sale";
-import { SalesHistory } from "./pages/pos/sales-history";
-import { SalesReport } from "./pages/pos/sales-report";
 import { StaffSecurity } from "./pages/pos/staff-security";
 import { BillingDashboard } from "./pages/billing/billing-dashboard";
 import { FinanceDashboard } from "./pages/finance/finance-dashboard";
@@ -52,12 +49,12 @@ export const router = createBrowserRouter([
       { path: "inventory/gallery", element: <Navigate to="/inventory" replace /> },
       { path: "inventory/:id", element: <PermissionGuard permission="inventory.view" />, children: [{ index: true, Component: PartDetails }] },
       { path: "profile", element: <PermissionGuard permission="profile.view" />, children: [{ index: true, Component: UserProfile }] },
-      { path: "pos", element: <PermissionGuard permission="sales.view" />, children: [{ index: true, Component: POSHome }] },
+      { path: "pos", element: <PermissionGuard permission="sales.create" />, children: [{ index: true, Component: NewSale }] },
       { path: "pos/sale", element: <PermissionGuard permission="sales.create" />, children: [{ index: true, Component: NewSale }] },
       { path: "pos/new-sale", element: <PermissionGuard permission="sales.create" />, children: [{ index: true, Component: NewSale }] },
-      { path: "pos/sales-history", element: <PermissionGuard permission="sales.view" />, children: [{ index: true, Component: SalesHistory }] },
+      { path: "pos/sales-history", element: <Navigate to="/pos" replace /> },
       { path: "pos/staff-security", element: <PermissionGuard permission="sales.manage" />, children: [{ index: true, Component: StaffSecurity }] },
-      { path: "pos/reports", element: <PermissionGuard permission="reports.view" />, children: [{ index: true, Component: SalesReport }] },
+      { path: "pos/reports", element: <Navigate to="/pos" replace /> },
       { path: "billing", element: <PermissionGuard permission="billing.view" />, children: [{ index: true, Component: BillingDashboard }] },
       { path: "reports", element: <PermissionGuard permission="reports.view" />, children: [{ index: true, Component: Reports }] },
       { path: "finance", element: <PermissionGuard permission="finance.view" />, children: [{ index: true, Component: FinanceDashboard }] },

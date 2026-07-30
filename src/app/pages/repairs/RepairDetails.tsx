@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, Edit, Printer, QrCode, MessageSquare, FileText, Image, Clock, CheckCircle } from "lucide-react";
+import { ArrowLeft, Edit, QrCode, MessageSquare, FileText, Image, Clock, CheckCircle } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
@@ -73,10 +73,6 @@ export function RepairDetails() {
           </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm">
-            <Printer className="h-4 w-4 mr-2" />
-            Print
-          </Button>
           <Button variant="outline" size="sm">
             <QrCode className="h-4 w-4 mr-2" />
             QR Code
@@ -318,10 +314,6 @@ export function RepairDetails() {
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Phone</span>
                   <span className="font-medium">+92 300 1234567</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Email</span>
-                  <span className="font-medium text-xs">ahmed@example.com</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Total Repairs</span>

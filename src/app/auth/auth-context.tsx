@@ -118,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email,
       phone: user.phoneNumber || "",
       designation: isSuperAdmin ? "Super Admin" : "Employee",
+      staffRole: isSuperAdmin ? "admin" : "employee",
       status: "active",
       createdAt: new Date().toISOString(),
       lastLogin: new Date().toISOString(),

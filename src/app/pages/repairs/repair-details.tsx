@@ -6,9 +6,7 @@ import {
   Clock,
   DollarSign,
   Edit,
-  MessageSquare,
   Plus,
-  Printer,
   Smartphone,
   User,
 } from "lucide-react";
@@ -28,13 +26,13 @@ import { Textarea } from "../../components/ui/textarea";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { Customer } from "../../types/customer";
 import type { RepairPartUsed, RepairTicket } from "../../types/repair-ticket";
-import { printRepairLabel } from "../../utils/print-repair-label";
+import { formatAmount } from "../../utils/formatting";
 import { getRepairDueState, getTimelineProgress, labelForRepairStatus, progressForRepairStatus, repairStatusOptions } from "../../utils/repair-status";
 
 const statusOptions = repairStatusOptions.map((status) => ({ value: status, label: labelForRepairStatus(status), progress: progressForRepairStatus(status) }));
 
 const labelForStatus = labelForRepairStatus;
-const money = (value: number) => `Rs ${value.toLocaleString()}`;
+const money = (value: number) => formatAmount(value, 0);
 
 export function RepairDetails() {
   const navigate = useNavigate();
@@ -189,7 +187,6 @@ export function RepairDetails() {
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" size="icon" onClick={() => { if (!printRepairLabel(ticket)) toast.error("Allow pop-ups to print the device label."); }}><Printer className="h-4 w-4" /></Button>
           <Button variant="outline" className="gap-2" onClick={openEdit}><Edit className="h-4 w-4" />Edit</Button>
           <Button className="gap-2" onClick={markComplete}><CheckCircle className="h-4 w-4" />Mark Complete</Button>
         </div>
@@ -197,7 +194,7 @@ export function RepairDetails() {
 
       <Card><CardContent className="space-y-4 p-6"><div className="flex items-center justify-between"><span className="text-sm font-medium">Repair Progress</span><span className="text-sm font-medium">{progress}%</span></div><Progress value={progress} className="h-2" /><div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><Select value={ticket.status} onValueChange={changeStatus}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statusOptions.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent></Select><Input value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Status note" /><Button variant="outline" onClick={() => changeStatus(ticket.status)}>Add Note</Button></div></CardContent></Card>
 
-      <Card><CardContent className="grid gap-4 p-5 md:grid-cols-4"><div className="rounded-lg border bg-primary/5 p-4"><p className="text-sm text-muted-foreground">Device Number</p><p className="text-xl font-bold text-primary">{ticket.deviceNumber || ticket.ticketNumber || ticket.id}</p><p className="mt-1 text-xs text-muted-foreground">Printed on the device label</p></div><div className="rounded-lg border bg-primary/5 p-4"><p className="text-sm text-muted-foreground">Invoice Number</p><p className="text-xl font-bold text-primary">{ticket.invoiceNumber || ticket.ticketNumber || ticket.id}</p><p className="mt-1 text-xs text-muted-foreground">This repair visit invoice</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Name</p><p className="font-semibold">{ticket.customer}</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Phone</p><p className="font-semibold">{ticket.customerPhone || customer?.phone || "-"}</p></div></CardContent></Card>
+      <Card><CardContent className="grid gap-4 p-5 md:grid-cols-4"><div className="rounded-lg border bg-primary/5 p-4"><p className="text-sm text-muted-foreground">Device Number</p><p className="text-xl font-bold text-primary">{ticket.deviceNumber || ticket.ticketNumber || ticket.id}</p><p className="mt-1 text-xs text-muted-foreground">This device intake number</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Invoice Number</p><p className="font-semibold">{ticket.invoiceNumber || ticket.ticketNumber || ticket.id}</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Name</p><p className="font-semibold">{ticket.customer}</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Phone</p><p className="font-semibold">{ticket.customerPhone || customer?.phone || "-"}</p></div></CardContent></Card>
 
       <Card>
         <CardHeader><CardTitle>Repair Summary</CardTitle></CardHeader>
@@ -205,23 +202,14 @@ export function RepairDetails() {
           {[
             ["Customer Name", ticket.customer],
             ["Customer Phone", ticket.customerPhone || customer?.phone || "-"],
-            ["Customer Email", ticket.customerEmail || customer?.email || "-"],
-            ["Customer Address", ticket.customerAddress || customer?.address || "-"],
-            ["Ticket ID", ticket.ticketNumber || ticket.id],
+            ["Device Number", ticket.deviceNumber || ticket.ticketNumber || ticket.id],
             ["Invoice Number", ticket.invoiceNumber || ticket.ticketNumber || ticket.id],
-            ["Device Number", ticket.deviceNumber || ticket.repairId || ticket.jobNumber || "-"],
             ["Device Type", ticket.device],
             ["Device Category", ticket.category || "-"],
             ["Brand", ticket.brand || "-"],
             ["Model", ticket.model || "-"],
             ["Serial Number", ticket.serialNumber || "-"],
-            ["Device Colour", ticket.deviceColor || "-"],
-            ["Accessories Received", ticket.accessories || "-"],
             ["Customer Complaint", ticket.issueDescription || ticket.issue],
-            ["Initial Inspection", ticket.conditionComment || "-"],
-            ["Diagnosis", ticket.timeline?.find((event) => event.diagnosis)?.diagnosis || "-"],
-            ["Repair Work Performed", ticket.statusHistory?.find((entry) => entry.note)?.note || ticket.timeline?.find((event) => event.diagnosis)?.diagnosis || "-"],
-            ["Device Condition", (ticket.condition ?? []).join(", ") || ticket.conditionComment || "-"],
             ["Assigned Technician", ticket.technician || "Unassigned"],
             ["Previous Visits Device Link", ticket.physicalDeviceId || "-"],
             ["Current Status", labelForStatus(ticket.status)],
@@ -259,14 +247,14 @@ export function RepairDetails() {
         </div>
 
         <div className="space-y-6">
-          <Card><CardHeader><CardTitle className="flex items-center gap-2"><User className="h-5 w-5" />Customer Info</CardTitle></CardHeader><CardContent className="space-y-4"><div className="flex items-center gap-3"><Avatar className="h-12 w-12"><AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${ticket.customer}`} /><AvatarFallback>{ticket.customer[0]}</AvatarFallback></Avatar><div className="flex-1"><p className="font-medium">{ticket.customer}</p><p className="text-sm text-muted-foreground">{ticket.customerPhone || customer?.phone || "No phone"}</p></div></div><Separator /><div className="space-y-3"><div className="flex items-center gap-2"><Smartphone className="h-4 w-4 text-muted-foreground" /><span className="text-sm">{ticket.customerPhone || customer?.phone || "-"}</span></div><div className="flex items-start gap-2"><MessageSquare className="mt-0.5 h-4 w-4 text-muted-foreground" /><span className="text-sm">{ticket.customerEmail || customer?.email || "-"}</span></div>{ticket.customerDescription ? <div className="rounded-md bg-muted/50 p-3 text-sm">{ticket.customerDescription}</div> : null}</div><Button variant="outline" className="w-full" onClick={() => customerProfileId ? navigate(`/customers/${customerProfileId}`) : toast.error("Customer profile not found for this ticket.")}>View Customer Profile</Button></CardContent></Card>
+          <Card><CardHeader><CardTitle className="flex items-center gap-2"><User className="h-5 w-5" />Customer Info</CardTitle></CardHeader><CardContent className="space-y-4"><div className="flex items-center gap-3"><Avatar className="h-12 w-12"><AvatarImage src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${ticket.customer}`} /><AvatarFallback>{ticket.customer[0]}</AvatarFallback></Avatar><div className="flex-1"><p className="font-medium">{ticket.customer}</p><p className="text-sm text-muted-foreground">{ticket.customerPhone || customer?.phone || "No phone"}</p></div></div><Separator /><div className="space-y-3"><div className="flex items-center gap-2"><Smartphone className="h-4 w-4 text-muted-foreground" /><span className="text-sm">{ticket.customerPhone || customer?.phone || "-"}</span></div>{ticket.customerDescription ? <div className="rounded-md bg-muted/50 p-3 text-sm">{ticket.customerDescription}</div> : null}</div><Button variant="outline" className="w-full" onClick={() => customerProfileId ? navigate(`/customers/${customerProfileId}`) : toast.error("Customer profile not found for this ticket.")}>View Customer Profile</Button></CardContent></Card>
           <Card><CardHeader><CardTitle>Assigned Technician</CardTitle></CardHeader><CardContent><p className="font-medium">{ticket.technician || "Unassigned"}</p></CardContent></Card>
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5" />Cost Breakdown</CardTitle></CardHeader><CardContent className="space-y-3"><div className="flex justify-between"><span className="text-muted-foreground">Parts Used</span><span className="font-medium">{money(partsTotal)}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Estimate</span><span className="font-medium">{money(ticket.amount)}</span></div><Separator /><div className="flex justify-between text-lg"><span className="font-medium">Total</span><span className="font-bold">{money(total)}</span></div></CardContent></Card>
           <Card><CardHeader><CardTitle className="flex items-center gap-2"><Clock className="h-5 w-5" />Timeline</CardTitle></CardHeader><CardContent className="space-y-3"><div className="flex justify-between"><span className="text-muted-foreground">Created</span><span className="font-medium">{new Date(ticket.createdAt).toLocaleDateString()}</span></div><div className="flex justify-between"><span className="text-muted-foreground">Est. Completion</span><span className="font-medium">{ticket.estimatedCompletion || "-"}</span></div></CardContent></Card>
         </div>
       </div>
 
-      <Dialog open={editOpen} onOpenChange={setEditOpen}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Edit Repair Ticket</DialogTitle></DialogHeader><form onSubmit={saveEdit} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Ticket Number</Label><Input value={editForm.ticketNumber} onChange={(event) => setEditForm({ ...editForm, ticketNumber: event.target.value })} required /><p className="text-xs text-muted-foreground">Device ka unique ticket number.</p></div><div className="space-y-2"><Label>Job Number</Label><Input value={editForm.jobNumber} onChange={(event) => setEditForm({ ...editForm, jobNumber: event.target.value })} required /><p className="text-xs text-muted-foreground">Customer ka job number; is device ka kaam is customer se link rahega.</p></div><div className="space-y-2"><Label>Customer</Label><Input value={editForm.customer} onChange={(event) => setEditForm({ ...editForm, customer: event.target.value })} required /></div><div className="space-y-2"><Label>Device</Label><Input value={editForm.device} onChange={(event) => setEditForm({ ...editForm, device: event.target.value })} required /></div><div className="space-y-2 md:col-span-2"><Label>Issue</Label><Input value={editForm.issue} onChange={(event) => setEditForm({ ...editForm, issue: event.target.value })} required /></div><div className="space-y-2 md:col-span-2"><Label>Description</Label><Textarea value={editForm.issueDescription} onChange={(event) => setEditForm({ ...editForm, issueDescription: event.target.value })} rows={3} /></div><div className="space-y-2"><Label>Priority</Label><Select value={editForm.priority} onValueChange={(priority) => setEditForm({ ...editForm, priority })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem><SelectItem value="urgent">Urgent</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Technician</Label><Input value={editForm.technician} onChange={(event) => setEditForm({ ...editForm, technician: event.target.value })} /></div><div className="space-y-2"><Label>Estimated Completion</Label><Input type="date" value={editForm.estimatedCompletion} onChange={(event) => setEditForm({ ...editForm, estimatedCompletion: event.target.value })} /></div><div className="space-y-2"><Label>Amount</Label><Input type="number" min="0" value={editForm.amount} onChange={(event) => setEditForm({ ...editForm, amount: event.target.value })} /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button><Button type="submit">Save Changes</Button></DialogFooter></form></DialogContent></Dialog>
+      <Dialog open={editOpen} onOpenChange={setEditOpen}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Edit Repair</DialogTitle></DialogHeader><form onSubmit={saveEdit} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Customer</Label><Input value={editForm.customer} onChange={(event) => setEditForm({ ...editForm, customer: event.target.value })} required /></div><div className="space-y-2"><Label>Device</Label><Input value={editForm.device} onChange={(event) => setEditForm({ ...editForm, device: event.target.value })} required /></div><div className="space-y-2 md:col-span-2"><Label>Issue</Label><Input value={editForm.issue} onChange={(event) => setEditForm({ ...editForm, issue: event.target.value })} required /></div><div className="space-y-2 md:col-span-2"><Label>Description</Label><Textarea value={editForm.issueDescription} onChange={(event) => setEditForm({ ...editForm, issueDescription: event.target.value })} rows={3} /></div><div className="space-y-2"><Label>Priority</Label><Select value={editForm.priority} onValueChange={(priority) => setEditForm({ ...editForm, priority })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem><SelectItem value="urgent">Urgent</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Technician</Label><Input value={editForm.technician} onChange={(event) => setEditForm({ ...editForm, technician: event.target.value })} /></div><div className="space-y-2"><Label>Estimated Completion</Label><Input type="date" value={editForm.estimatedCompletion} onChange={(event) => setEditForm({ ...editForm, estimatedCompletion: event.target.value })} /></div><div className="space-y-2"><Label>Amount</Label><Input type="number" min="0" value={editForm.amount} onChange={(event) => setEditForm({ ...editForm, amount: event.target.value })} /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button><Button type="submit">Save Changes</Button></DialogFooter></form></DialogContent></Dialog>
     </div>
   );
 }

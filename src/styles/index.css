@@ -21,42 +21,56 @@ body,
 }
 
 body {
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
-/* Responsive data areas: scroll in both directions without hiding actions. */
+.app-form-grid > div,
+.app-form-grid label,
+.app-form-grid [data-slot="label"] {
+  align-items: flex-start;
+  justify-content: flex-start;
+  text-align: left;
+}
+
+.app-action-icon {
+  height: 2rem;
+  width: 2rem;
+  border-color: hsl(var(--border));
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.app-action-icon:hover {
+  background: hsl(var(--muted));
+}
+
+.app-action-icon.view:hover {
+  color: #0f766e;
+}
+
+.app-action-icon.edit:hover {
+  color: #2563eb;
+}
+
+.app-action-icon.delete:hover {
+  color: #dc2626;
+}
+
+.app-action-icon.print:hover {
+  color: #7c3aed;
+}
+
+/* Responsive data areas: allow horizontal scroll only, no inner vertical scroll. */
 [data-slot="table-container"] {
   max-width: 100%;
-  max-height: min(70vh, 700px);
-  overflow: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable both-edges;
-  scrollbar-width: thin;
+  overflow-x: scroll;
+  overflow-y: visible;
+  scrollbar-gutter: stable;
 }
 
 [data-slot="table"] {
   min-width: max-content;
-}
-
-[data-slot="table-header"] {
-  position: sticky;
-  top: 0;
-  z-index: 3;
-  background: var(--card);
-}
-
-/* Keep the important action/print column visible while scrolling sideways. */
-[data-slot="table-head"]:last-child,
-[data-slot="table-cell"]:last-child {
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  background: var(--card);
-  box-shadow: -8px 0 12px -12px rgb(0 0 0 / 45%);
-}
-
-[data-slot="table-head"]:last-child {
-  z-index: 4;
 }
 
 [data-slot="dialog-content"] {
@@ -65,10 +79,6 @@ body {
 }
 
 @media (max-width: 640px) {
-  [data-slot="table-container"] {
-    max-height: 65dvh;
-  }
-
   [data-slot="table-head"],
   [data-slot="table-cell"] {
     padding-inline: 0.625rem;

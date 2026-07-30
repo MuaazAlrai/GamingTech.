@@ -2,16 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router";
 import {
   Search,
-  Plus,
   Eye,
   Clock,
   AlertCircle,
   CheckCircle2,
   XCircle,
-  Printer,
   Pencil,
   Trash2,
 } from "lucide-react";
+import { DataPagination } from "../../components/shared/data-pagination";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -34,7 +33,6 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "../../components/ui/avatar";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { RepairTicket } from "../../types/repair-ticket";
-import { printRepairLabel } from "../../utils/print-repair-label";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Label } from "../../components/ui/label";
@@ -95,7 +93,8 @@ const statusBadgeClasses: Record<string, string> = {
   on_hold: "border-orange-400/40 bg-orange-50 text-orange-700",
 };
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 10;
+const actionIconButtonClass = "app-action-icon";
 
 const repairViewFilters = [
   { value: "all", label: "All Repairs" },
@@ -314,16 +313,9 @@ export function RepairTickets() {
   };
 
   const deleteTicket = (ticket: RepairTicket) => {
-    if (!window.confirm(`Archive ${ticket.id}? The repair history will stay saved.`)) return;
-    const archivedAt = new Date().toISOString();
-    setTickets((current) => current.map((item) => item.id === ticket.id ? {
-      ...item,
-      status: "cancelled",
-      openStatus: "Closed",
-      timeline: [{ date: archivedAt, status: "cancelled", note: "Repair archived. History preserved.", technician: item.technician }, ...(item.timeline ?? [])],
-      statusHistory: [{ id: `STATUS-${Date.now()}`, date: archivedAt, status: "cancelled", label: "Cancelled", note: "Repair archived. History preserved.", technician: item.technician }, ...(item.statusHistory ?? [])],
-    } : item));
-    toast.success("Repair archived. History preserved.");
+    if (!window.confirm(`Delete ${ticket.id}? This repair will be removed immediately.`)) return;
+    setTickets((current) => current.filter((item) => item.id !== ticket.id));
+    toast.success("Repair deleted.");
   };
 
   const inProgressCount = tickets.filter((ticket) =>
@@ -387,18 +379,12 @@ export function RepairTickets() {
           <h1 className="text-3xl font-bold">Repair Tickets</h1>
           <p className="text-muted-foreground mt-1">Manage Repair IDs, statuses, and open jobs</p>
         </div>
-        <Link to="/repairs/create">
-          <Button className="gap-2">
-            <Plus className="h-4 w-4" />
-            New Repair Ticket
-          </Button>
-        </Link>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 md:p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total</p>
@@ -411,7 +397,7 @@ export function RepairTickets() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 md:p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">In Progress</p>
@@ -424,7 +410,7 @@ export function RepairTickets() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 md:p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Ready</p>
@@ -437,7 +423,7 @@ export function RepairTickets() {
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-6">
+          <CardContent className="p-4 md:p-5">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Waiting Parts</p>
@@ -457,18 +443,18 @@ export function RepairTickets() {
           <CardTitle>All Repair Tickets</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 mb-6 lg:grid-cols-[minmax(240px,1fr)_220px_180px_180px]">
+          <div className="mb-5 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_190px_170px_170px]">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Search invoice, device, customer, phone, email, brand, model, serial, part, problem..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="h-10 pl-10 text-sm"
               />
             </div>
             <Select value={viewFilter} onValueChange={(value) => updateFilter("view", value)}>
-              <SelectTrigger>
+              <SelectTrigger className="h-10 text-sm">
                 <SelectValue placeholder="Repair view" />
               </SelectTrigger>
               <SelectContent>
@@ -476,7 +462,7 @@ export function RepairTickets() {
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={(value) => updateFilter("status", value)}>
-              <SelectTrigger>
+              <SelectTrigger className="h-10 text-sm">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
@@ -485,7 +471,7 @@ export function RepairTickets() {
               </SelectContent>
             </Select>
             <Select value={priorityFilter} onValueChange={(value) => updateFilter("priority", value)}>
-              <SelectTrigger>
+              <SelectTrigger className="h-10 text-sm">
                 <SelectValue placeholder="Priority" />
               </SelectTrigger>
               <SelectContent>
@@ -497,54 +483,50 @@ export function RepairTickets() {
               </SelectContent>
             </Select>
           </div>
-          <div className="grid gap-4 mb-6 md:grid-cols-2 xl:grid-cols-[1fr_1fr_180px_160px_160px_auto]">
+          <div className="mb-5 grid gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_170px_150px_150px_auto]">
             <Select value={technicianFilter} onValueChange={(value) => updateFilter("technician", value)}>
-              <SelectTrigger><SelectValue placeholder="Technician" /></SelectTrigger>
+              <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Technician" /></SelectTrigger>
               <SelectContent><SelectItem value="all">All Technicians</SelectItem>{technicians.map((technician) => <SelectItem key={technician} value={technician}>{technician}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={deviceTypeFilter} onValueChange={(value) => updateFilter("deviceType", value)}>
-              <SelectTrigger><SelectValue placeholder="Device Type" /></SelectTrigger>
+              <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Device Type" /></SelectTrigger>
               <SelectContent><SelectItem value="all">All Device Types</SelectItem>{deviceTypes.map((device) => <SelectItem key={device} value={device}>{device}</SelectItem>)}</SelectContent>
             </Select>
             <Select value={paymentStatusFilter} onValueChange={(value) => updateFilter("payment", value)}>
-              <SelectTrigger><SelectValue placeholder="Payment" /></SelectTrigger>
+              <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Payment" /></SelectTrigger>
               <SelectContent><SelectItem value="all">All Payments</SelectItem>{paymentStatuses.map((status) => <SelectItem key={status} value={status}>{status === "partial" ? "Partially Paid" : status[0].toUpperCase() + status.slice(1)}</SelectItem>)}</SelectContent>
             </Select>
-            <Input type="date" value={dateFromFilter} onChange={(event) => updateFilter("from", event.target.value)} aria-label="Received date from" />
-            <Input type="date" value={dateToFilter} onChange={(event) => updateFilter("to", event.target.value)} aria-label="Received date to" />
-            <Button type="button" variant="outline" onClick={resetFilters}>Reset Filters</Button>
+            <Input className="h-10 text-sm" type="date" value={dateFromFilter} onChange={(event) => updateFilter("from", event.target.value)} aria-label="Received date from" />
+            <Input className="h-10 text-sm" type="date" value={dateToFilter} onChange={(event) => updateFilter("to", event.target.value)} aria-label="Received date to" />
+            <Button type="button" variant="outline" className="h-10 text-sm" onClick={resetFilters}>Reset Filters</Button>
           </div>
-          <div className="mb-3 flex flex-col gap-2 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-            <p>Showing {pagedTickets.length ? (safePage - 1) * PAGE_SIZE + 1 : 0}-{Math.min(safePage * PAGE_SIZE, filteredTickets.length)} of {filteredTickets.length} matching repairs. Search waits briefly while typing.</p>
+          <div className="mb-3 flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+            <p>Showing {pagedTickets.length ? (safePage - 1) * PAGE_SIZE + 1 : 0}-{Math.min(safePage * PAGE_SIZE, filteredTickets.length)} of {filteredTickets.length} repairs.</p>
             <p>Page {safePage} of {totalPages}</p>
           </div>
 
           {/* Table */}
-          <div className="rounded-md border overflow-x-auto">
-            <Table>
+          <div className="rounded-md border">
+            <Table containerClassName="overflow-visible">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Invoice Number</TableHead>
-                  <TableHead>Device Number</TableHead>
-                  <TableHead>Ticket ID</TableHead>
-                  <TableHead>Customer Name</TableHead>
-                  <TableHead>Customer Phone</TableHead>
-                  <TableHead>Device Name</TableHead>
-                  <TableHead>Brand / Model</TableHead>
-                  <TableHead>Assigned Technician</TableHead>
-                  <TableHead>Repair Status</TableHead>
-                  <TableHead>Progress</TableHead>
-                  <TableHead>Received Date</TableHead>
-                  <TableHead>Expected Return Date</TableHead>
-                  <TableHead>Remaining Days</TableHead>
-                  <TableHead>Payment Status</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead className="w-[180px] whitespace-nowrap px-3 py-2 text-xs">Invoice / Status</TableHead>
+                  <TableHead className="w-[220px] px-3 py-2 text-xs">Customer</TableHead>
+                  <TableHead className="hidden whitespace-nowrap px-3 py-2 text-xs lg:table-cell">Phone</TableHead>
+                  <TableHead className="w-[220px] px-3 py-2 text-xs">Device</TableHead>
+                  <TableHead className="hidden px-3 py-2 text-xs xl:table-cell">Brand / Model</TableHead>
+                  <TableHead className="hidden px-3 py-2 text-xs xl:table-cell">Technician</TableHead>
+                  <TableHead className="hidden whitespace-nowrap px-3 py-2 text-xs md:table-cell">Received</TableHead>
+                  <TableHead className="hidden whitespace-nowrap px-3 py-2 text-xs lg:table-cell">Return</TableHead>
+                  <TableHead className="hidden whitespace-nowrap px-3 py-2 text-xs md:table-cell">Days</TableHead>
+                  <TableHead className="hidden whitespace-nowrap px-3 py-2 text-xs sm:table-cell">Payment</TableHead>
+                  <TableHead className="px-3 py-2 text-right text-xs">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredTickets.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={15} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={11} className="py-8 text-center text-muted-foreground">
                       No repair tickets found
                     </TableCell>
                   </TableRow>
@@ -553,54 +535,57 @@ export function RepairTickets() {
                     const status = statusConfig[ticket.status] ?? { label: labelForRepairStatus(ticket.status), variant: "outline" as const, icon: Clock };
                     const StatusIcon = status.icon;
                     const dueState = getRepairDueState(ticket);
-                    const deviceNumber = ticket.deviceNumber || ticket.ticketNumber || ticket.id;
                     const invoiceNumber = ticket.invoiceNumber || ticket.ticketNumber || ticket.id;
-                    const ticketId = ticket.ticketNumber && ticket.ticketNumber !== deviceNumber ? ticket.ticketNumber : ticket.id !== deviceNumber ? ticket.id : "";
+                    const deviceNumber = ticket.deviceNumber || ticket.ticketNumber || ticket.id;
                     const detailState = { repairSearch: searchParams.toString() };
                     const progress = repairProgress(ticket);
                     const paymentStatus = paymentStatusFor(ticket);
                     return (
                       <TableRow key={ticket.id}>
-                        <TableCell className="font-medium"><Link className="text-primary hover:underline" to={`/repairs/${ticket.id}`} state={detailState}>{invoiceNumber}</Link></TableCell>
-                        <TableCell className="font-medium"><Link className="text-primary hover:underline" to={`/repairs/${ticket.id}`} state={detailState}>{deviceNumber}</Link></TableCell>
-                        <TableCell className="font-medium">{ticketId ? <Link className="text-primary hover:underline" to={`/repairs/${ticket.id}`} state={detailState}>{ticketId}</Link> : "-"}</TableCell>
-                        <TableCell>
+                        <TableCell className="px-3 py-3 align-top">
+                          <div className="space-y-1.5">
+                            <Link className="block text-sm font-semibold text-primary hover:underline" to={`/repairs/${ticket.id}`} state={detailState}>{invoiceNumber}</Link>
+                            <button type="button" className="block rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2" onClick={(event) => { event.stopPropagation(); openStatusUpdate(ticket); }}>
+                              <Badge variant="outline" className={`gap-1 text-[11px] cursor-pointer ${statusBadgeClasses[ticket.status] ?? ""}`}>
+                                <StatusIcon className="h-3 w-3" />
+                                {status.label}
+                              </Badge>
+                            </button>
+                          </div>
+                        </TableCell>
+                        <TableCell className="px-3 py-3">
                           <div className="flex items-center gap-2">
-                            <Avatar className="h-8 w-8">
+                            <Avatar className="h-7 w-7">
                               <AvatarImage
                                 src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${ticket.customer}`}
                               />
                               <AvatarFallback>{ticket.customer[0]}</AvatarFallback>
                             </Avatar>
-                            <span>{ticket.customer}</span>
+                            <div className="min-w-0">
+                              <span className="block truncate text-sm font-medium">{ticket.customer}</span>
+                              <span className="block text-xs text-muted-foreground lg:hidden">{ticket.customerPhone || "-"}</span>
+                            </div>
                           </div>
                         </TableCell>
-                        <TableCell>{ticket.customerPhone || "-"}</TableCell>
-                        <TableCell>{ticket.device}</TableCell>
-                        <TableCell className="max-w-[180px] truncate">{[ticket.brand, ticket.model].filter(Boolean).join(" / ") || "-"}</TableCell>
-                        <TableCell>{ticket.technician || "Unassigned"}</TableCell>
-                        <TableCell>
-                          <button type="button" className="rounded-md focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2" onClick={(event) => { event.stopPropagation(); openStatusUpdate(ticket); }}>
-                            <Badge variant="outline" className={`gap-1 cursor-pointer ${statusBadgeClasses[ticket.status] ?? ""}`}>
-                              <StatusIcon className="h-3 w-3" />
-                              {status.label} · {progress}%
-                            </Badge>
-                          </button>
+                        <TableCell className="hidden px-3 py-3 text-sm lg:table-cell">{ticket.customerPhone || "-"}</TableCell>
+                        <TableCell className="px-3 py-3 text-sm">
+                          <div className="truncate font-medium">{ticket.device}</div>
+                          <div className="truncate text-xs text-muted-foreground">{deviceNumber}</div>
+                          <div className="text-xs text-muted-foreground xl:hidden">{[ticket.brand, ticket.model].filter(Boolean).join(" / ") || "-"}</div>
                         </TableCell>
-                        <TableCell>{progress}%</TableCell>
-                        <TableCell>{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : "-"}</TableCell>
-                        <TableCell>{ticket.estimatedCompletion || "-"}</TableCell>
-                        <TableCell><Badge variant="outline" className={dueBadgeClasses[dueState.tone]}>{dueState.label}</Badge></TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={paymentStatus === "paid" ? "border-success/30 bg-success/10 text-success" : paymentStatus === "partial" ? "border-warning/40 bg-warning/10 text-warning" : "border-destructive/40 bg-destructive/10 text-destructive"}>{paymentStatus === "partial" ? "Partially Paid" : paymentStatus}</Badge>
+                        <TableCell className="hidden max-w-[180px] truncate px-3 py-3 text-sm xl:table-cell">{[ticket.brand, ticket.model].filter(Boolean).join(" / ") || "-"}</TableCell>
+                        <TableCell className="hidden px-3 py-3 text-sm xl:table-cell">{ticket.technician || "Unassigned"}</TableCell>
+                        <TableCell className="hidden whitespace-nowrap px-3 py-3 text-sm md:table-cell">{ticket.createdAt ? new Date(ticket.createdAt).toLocaleDateString() : "-"}</TableCell>
+                        <TableCell className="hidden whitespace-nowrap px-3 py-3 text-sm lg:table-cell">{ticket.estimatedCompletion ? new Date(ticket.estimatedCompletion).toLocaleDateString() : "-"}</TableCell>
+                        <TableCell className="hidden px-3 py-3 md:table-cell"><Badge variant="outline" className={`text-[11px] ${dueBadgeClasses[dueState.tone]}`}>{dueState.label}</Badge></TableCell>
+                        <TableCell className="hidden px-3 py-3 sm:table-cell">
+                          <Badge variant="outline" className={`text-[11px] ${paymentStatus === "paid" ? "border-success/30 bg-success/10 text-success" : paymentStatus === "partial" ? "border-warning/40 bg-warning/10 text-warning" : "border-destructive/40 bg-destructive/10 text-destructive"}`}>{paymentStatus === "partial" ? "Partially Paid" : paymentStatus}</Badge>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="flex justify-end gap-1">
-                            <Link to={`/repairs/${ticket.id}`} state={detailState}><Button variant="ghost" size="icon" title="View Details"><Eye className="h-4 w-4" /></Button></Link>
-                            {isAdmin && <Button variant="outline" size="icon" title="Edit" onClick={() => openEdit(ticket)}><Pencil className="h-4 w-4" /></Button>}
-                            <Button variant="outline" size="icon" title="Update Status" onClick={() => openStatusUpdate(ticket)}><CheckCircle2 className="h-4 w-4" /></Button>
-                            <Button variant="outline" size="icon" title="Print label" onClick={() => { if (!printRepairLabel(ticket)) toast.error("Allow pop-ups to print the device label."); }}><Printer className="h-4 w-4" /></Button>
-                            {isAdmin && <Button variant="destructive" size="icon" title="Delete" onClick={() => deleteTicket(ticket)}><Trash2 className="h-4 w-4" /></Button>}
+                        <TableCell className="px-3 py-3 text-right align-top">
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {isAdmin && <Button variant="outline" size="icon" className={`${actionIconButtonClass} edit`} title="Edit" onClick={() => openEdit(ticket)}><Pencil className="h-4 w-4" /></Button>}
+                            <Link to={`/repairs/${ticket.id}`} state={detailState}><Button variant="outline" size="icon" className={`${actionIconButtonClass} view`} title="View Details"><Eye className="h-4 w-4" /></Button></Link>
+                            {isAdmin && <Button variant="outline" size="icon" className={`${actionIconButtonClass} delete`} title="Delete" onClick={() => deleteTicket(ticket)}><Trash2 className="h-4 w-4" /></Button>}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -610,11 +595,15 @@ export function RepairTickets() {
               </TableBody>
             </Table>
           </div>
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <Button type="button" variant="outline" onClick={() => setPage(safePage - 1)} disabled={safePage <= 1}>Previous</Button>
-            <div className="text-center text-sm text-muted-foreground">Only {PAGE_SIZE} rows render per page to keep large repair lists responsive.</div>
-            <Button type="button" variant="outline" onClick={() => setPage(safePage + 1)} disabled={safePage >= totalPages}>Next</Button>
-          </div>
+          <DataPagination
+            page={safePage}
+            totalPages={totalPages}
+            startItem={pagedTickets.length ? (safePage - 1) * PAGE_SIZE + 1 : 0}
+            endItem={Math.min(safePage * PAGE_SIZE, filteredTickets.length)}
+            totalItems={filteredTickets.length}
+            onPageChange={setPage}
+            label="repairs"
+          />
         </CardContent>
       </Card>
       <Dialog open={Boolean(statusTicket)} onOpenChange={(open) => !open && setStatusTicket(null)}>
@@ -653,7 +642,9 @@ export function RepairTickets() {
           </form>
         </DialogContent>
       </Dialog>
-      <Dialog open={Boolean(editingTicket)} onOpenChange={(open) => !open && setEditingTicket(null)}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Edit Repair Ticket {editingTicket?.id}</DialogTitle></DialogHeader><form onSubmit={saveEdit} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Ticket Number</Label><Input value={editForm.ticketNumber} onChange={(e) => setEditForm({ ...editForm, ticketNumber: e.target.value })} required /><p className="text-xs text-muted-foreground">Device ka unique ticket number.</p></div><div className="space-y-2"><Label>Job Number</Label><Input value={editForm.jobNumber} onChange={(e) => setEditForm({ ...editForm, jobNumber: e.target.value })} required /><p className="text-xs text-muted-foreground">Customer ka job number; is se customer-device ka kaam track hoga.</p></div><div className="space-y-2"><Label>Customer</Label><Input value={editForm.customer} onChange={(e) => setEditForm({ ...editForm, customer: e.target.value })} required /></div><div className="space-y-2"><Label>Device</Label><Input value={editForm.device} onChange={(e) => setEditForm({ ...editForm, device: e.target.value })} required /></div><div className="space-y-2 md:col-span-2"><Label>Issue</Label><Input value={editForm.issue} onChange={(e) => setEditForm({ ...editForm, issue: e.target.value })} required /></div><div className="space-y-2"><Label>Status</Label><Select value={editForm.status} onValueChange={(status) => setEditForm({ ...editForm, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(statusConfig).map(([value, item]) => <SelectItem key={value} value={value}>{item.label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Priority</Label><Select value={editForm.priority} onValueChange={(priority) => setEditForm({ ...editForm, priority })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem><SelectItem value="urgent">Urgent</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Estimated Completion</Label><Input type="date" value={editForm.estimatedCompletion} onChange={(e) => setEditForm({ ...editForm, estimatedCompletion: e.target.value })} /></div><div className="space-y-2"><Label>Amount</Label><Input type="number" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setEditingTicket(null)}>Cancel</Button><Button type="submit">Save Changes</Button></DialogFooter></form></DialogContent></Dialog>
+      <Dialog open={Boolean(editingTicket)} onOpenChange={(open) => !open && setEditingTicket(null)}><DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>Edit Repair</DialogTitle></DialogHeader><form onSubmit={saveEdit} className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><div className="space-y-2"><Label>Customer</Label><Input value={editForm.customer} onChange={(e) => setEditForm({ ...editForm, customer: e.target.value })} required /></div><div className="space-y-2"><Label>Device</Label><Input value={editForm.device} onChange={(e) => setEditForm({ ...editForm, device: e.target.value })} required /></div><div className="space-y-2 md:col-span-2"><Label>Issue</Label><Input value={editForm.issue} onChange={(e) => setEditForm({ ...editForm, issue: e.target.value })} required /></div><div className="space-y-2"><Label>Status</Label><Select value={editForm.status} onValueChange={(status) => setEditForm({ ...editForm, status })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{Object.entries(statusConfig).map(([value, item]) => <SelectItem key={value} value={value}>{item.label}</SelectItem>)}</SelectContent></Select></div><div className="space-y-2"><Label>Priority</Label><Select value={editForm.priority} onValueChange={(priority) => setEditForm({ ...editForm, priority })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="low">Low</SelectItem><SelectItem value="medium">Medium</SelectItem><SelectItem value="high">High</SelectItem><SelectItem value="urgent">Urgent</SelectItem></SelectContent></Select></div><div className="space-y-2"><Label>Estimated Completion</Label><Input type="date" value={editForm.estimatedCompletion} onChange={(e) => setEditForm({ ...editForm, estimatedCompletion: e.target.value })} /></div><div className="space-y-2"><Label>Amount</Label><Input type="number" min="0" value={editForm.amount} onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })} /></div></div><DialogFooter><Button type="button" variant="outline" onClick={() => setEditingTicket(null)}>Cancel</Button><Button type="submit">Save Changes</Button></DialogFooter></form></DialogContent></Dialog>
     </div>
   );
 }
+
+

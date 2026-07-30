@@ -12,6 +12,23 @@ export type PosSaleItem = {
   repairPartId?: string;
 };
 
+export type PosSaleDevice = {
+  id: string;
+  repairId?: string;
+  deviceNumber: string;
+  deviceName: string;
+  deviceType: string;
+  deviceBrand?: string;
+  deviceModel?: string;
+  deviceSerialNumber?: string;
+  faultDescription?: string;
+  priority?: "low" | "medium" | "high" | "urgent";
+  technician?: string;
+  repairStatus?: string;
+  estimatedCompletion?: string;
+  amount: number;
+};
+
 export type PosSale = {
   id: string;
   date: string;
@@ -33,7 +50,19 @@ export type PosSale = {
   cashierRole?: "admin" | "employee";
   shiftId?: string;
   repairId?: string;
+  repairIds?: string[];
   deviceNumber?: string;
+  deviceName?: string;
+  deviceBrand?: string;
+  deviceModel?: string;
+  deviceSerialNumber?: string;
+  devices?: PosSaleDevice[];
+  faultDescription?: string;
+  invoiceStatus?: "unpaid" | "partially_paid" | "paid" | "cancelled";
+  priority?: "low" | "medium" | "high" | "urgent";
+  technician?: string;
+  estimatedCompletion?: string;
+  termsAndConditions?: string;
   invoiceType?: "repair" | "sale";
   repairStatus?: string;
   repairProgress?: number;

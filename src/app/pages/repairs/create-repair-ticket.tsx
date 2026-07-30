@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { ArrowLeft, CalendarClock, CheckCircle2, ClipboardList, Loader2, Printer, QrCode, Smartphone, UserRound, Wrench } from "lucide-react";
+import { ArrowLeft, CalendarClock, CheckCircle2, ClipboardList, Loader2, Printer, Smartphone, UserRound, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
@@ -13,6 +13,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import { generateRepairNumbers, valueExists } from "../../services/number-generation";
 import type { RepairTicket } from "../../types/repair-ticket";
+import { CUSTOMER_PHONE_MESSAGE, isValidCustomerPhone, normalizeCustomerPhone, sanitizeCustomerPhone } from "../../utils/phone";
 import { printRepairLabel } from "../../utils/print-repair-label";
 
 type Customer = {
@@ -116,9 +117,14 @@ export function CreateRepairTicket() {
     const issueTitle = String(formData.get("issueTitle") || "").trim();
     const customerPhone = customerType === "existing"
       ? selectedCustomerRecord?.phone || ""
-      : String(formData.get("customerPhone") || "").trim();
+      : sanitizeCustomerPhone(String(formData.get("customerPhone") || "").trim());
     const customerDescription = String(formData.get("customerDescription") || "").trim();
     const estimatedCost = Number(formData.get("estimatedCost") || 0);
+    if (customerType === "new" && !isValidCustomerPhone(customerPhone)) {
+      setFormMessage({ type: "error", text: CUSTOMER_PHONE_MESSAGE });
+      toast.error(CUSTOMER_PHONE_MESSAGE);
+      return;
+    }
     let deviceNumber = "";
     let internalSerialNumber = "";
     let invoiceNumber = "";
@@ -197,7 +203,7 @@ export function CreateRepairTicket() {
     setCustomers((current) => {
       const existingIndex = customerType === "existing"
         ? current.findIndex((item) => item.id === selectedCustomer)
-        : current.findIndex((item) => item.phone === customerPhone && customerPhone !== "");
+        : current.findIndex((item) => normalizeCustomerPhone(item.phone) === normalizeCustomerPhone(customerPhone) && customerPhone !== "");
       if (existingIndex >= 0) {
         return current.map((item, index) => index === existingIndex
           ? { ...item, totalRepairs: item.totalRepairs + 1, totalSpent: item.totalSpent + estimatedCost }
@@ -215,7 +221,7 @@ export function CreateRepairTicket() {
       }];
     });
     if (printLabel && !printRepairLabel(ticket)) {
-      toast.error("Print window was blocked. Use Print Label from the ticket list.");
+      toast.error("Unable to print this invoice. Use Print Label from the ticket list.");
     }
     setDraft(emptyDraft);
     setCustomerType("existing");
@@ -285,9 +291,7 @@ export function CreateRepairTicket() {
               ) : (
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2"><Label htmlFor="customerName">Name</Label><Input id="customerName" name="customerName" value={draft.customerName} onChange={(event) => updateDraft("customerName", event.target.value)} placeholder="Customer name" required className={fieldClass} /></div>
-                  <div className="space-y-2"><Label htmlFor="customerPhone">Phone</Label><Input id="customerPhone" name="customerPhone" value={draft.customerPhone} onChange={(event) => updateDraft("customerPhone", event.target.value)} type="tel" placeholder="+92 300 1234567" required className={fieldClass} /><p className="text-xs text-muted-foreground">Used for pickup updates and payment reminders.</p></div>
-                  <div className="space-y-2"><Label htmlFor="customerEmail">Email</Label><Input id="customerEmail" name="customerEmail" value={draft.customerEmail} onChange={(event) => updateDraft("customerEmail", event.target.value)} type="email" placeholder="customer@email.com" className={fieldClass} /></div>
-                  <div className="space-y-2"><Label htmlFor="customerAddress">Address</Label><Input id="customerAddress" name="customerAddress" value={draft.customerAddress} onChange={(event) => updateDraft("customerAddress", event.target.value)} placeholder="Customer address" className={fieldClass} /></div>
+                  <div className="space-y-2"><Label htmlFor="customerPhone">Phone</Label><Input id="customerPhone" name="customerPhone" value={draft.customerPhone} onChange={(event) => updateDraft("customerPhone", sanitizeCustomerPhone(event.target.value))} type="tel" inputMode="tel" placeholder="03XXXXXXXXX or +92XXXXXXXXXX" required className={fieldClass} /><p className="text-xs text-muted-foreground">Used for pickup updates and payment reminders.</p></div>
                   <div className="space-y-2 md:col-span-2"><Label htmlFor="customerDescription">Customer Note</Label><Textarea id="customerDescription" name="customerDescription" value={draft.customerDescription} onChange={(event) => updateDraft("customerDescription", event.target.value)} placeholder="Any request or instruction from the customer" rows={3} className="min-h-24 bg-white" /></div>
                 </div>
               )}
@@ -304,7 +308,6 @@ export function CreateRepairTicket() {
                 <div className="space-y-2"><Label>Device Type</Label><Select value={deviceType} onValueChange={setDeviceType} required><SelectTrigger className={fieldClass}><SelectValue placeholder="Select device type" /></SelectTrigger><SelectContent><SelectItem value="gaming_pc">Gaming PC</SelectItem><SelectItem value="laptop">Laptop</SelectItem><SelectItem value="computer">Desktop Computer</SelectItem><SelectItem value="playstation">PlayStation</SelectItem><SelectItem value="xbox">Xbox</SelectItem><SelectItem value="nintendo">Nintendo Switch</SelectItem><SelectItem value="gpu">Graphics Card</SelectItem><SelectItem value="motherboard">Motherboard</SelectItem></SelectContent></Select><p className="text-xs text-muted-foreground">Choose the closest match so the repair goes to the right person.</p></div>
                 <div className="space-y-2"><Label htmlFor="brand">Brand</Label><Input id="brand" name="brand" value={draft.brand} onChange={(event) => updateDraft("brand", event.target.value)} placeholder="Sony, Microsoft, ASUS" required className={fieldClass} /></div>
                 <div className="space-y-2"><Label htmlFor="model">Model</Label><Input id="model" name="model" value={draft.model} onChange={(event) => updateDraft("model", event.target.value)} placeholder="PlayStation 5, Xbox Series X" required className={fieldClass} /></div>
-                <div className="space-y-2 rounded-lg border bg-muted/40 p-3"><Label>Device Numbers</Label><div className="flex items-center gap-2 text-sm text-muted-foreground"><QrCode className="h-4 w-4 text-primary" />Device number and internal serial number are created automatically when you save.</div></div>
               </div>
               <div className="space-y-2"><Label htmlFor="accessories">Items With Device</Label><Input id="accessories" name="accessories" value={draft.accessories} onChange={(event) => updateDraft("accessories", event.target.value)} placeholder="Controller, power cable, HDMI cable" className={fieldClass} /><p className="text-xs text-muted-foreground">List anything the customer leaves at the shop.</p></div>
             </CardContent>

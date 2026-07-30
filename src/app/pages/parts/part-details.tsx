@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, CalendarDays, CheckCircle2, Package, Printer, Wrench } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowLeft, CalendarDays, CheckCircle2, Package, Wrench } from "lucide-react";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
@@ -12,7 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useAuth } from "../../auth/auth-context";
 import { usePersistentState } from "../../hooks/use-persistent-state";
-import { printInventoryItem } from "../../utils/print-inventory-item";
+import type { PosSale } from "../../types/pos-sale";
+import type { RepairTicket } from "../../types/repair-ticket";
+import { formatAmount } from "../../utils/formatting";
+import { buildRepairInventoryItems, type RepairInventoryItem } from "../../utils/repair-inventory";
 
 type InventoryTimelineEvent = {
   date: string;
@@ -21,22 +23,7 @@ type InventoryTimelineEvent = {
   progress: number;
 };
 
-type InventoryItem = {
-  id: string;
-  name: string;
-  category: string;
-  sku: string;
-  stock: number;
-  reorderLevel: number;
-  unit: string;
-  costPrice: number;
-  sellingPrice: number;
-  supplier: string;
-  location: string;
-  status?: string;
-  progress?: number;
-  timeline?: InventoryTimelineEvent[];
-};
+type InventoryItem = RepairInventoryItem & { timeline?: InventoryTimelineEvent[] };
 
 const statusProgress: Record<string, number> = {
   "Received": 10,
@@ -51,7 +38,10 @@ export function PartDetails() {
   const { id } = useParams();
   const { hasPermission } = useAuth();
   const [parts, setParts] = usePersistentState<InventoryItem[]>("gamingtech.parts", []);
-  const part = parts.find((item) => item.id === id);
+  const [repairs] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
+  const [invoices] = usePersistentState<PosSale[]>("gamingtech.posSales", []);
+  const repairInventoryItems = useMemo(() => buildRepairInventoryItems(repairs, invoices), [invoices, repairs]);
+  const part = parts.find((item) => item.id === id) ?? repairInventoryItems.find((item) => item.id === id);
   const [statusNote, setStatusNote] = useState("");
 
   const progress = Math.max(0, Math.min(Number(part?.progress ?? statusProgress[part?.status ?? "Work Started"] ?? 25), 100));
@@ -102,12 +92,6 @@ export function PartDetails() {
             <p className="text-muted-foreground mt-1">Inventory Item Details - {part.sku}</p>
           </div>
         </div>
-        {hasPermission("inventory.print") && (
-          <Button variant="outline" className="gap-2" onClick={() => { if (!printInventoryItem({ ...part, progress, timeline })) toast.error("Allow pop-ups to print this item."); }}>
-            <Printer className="h-4 w-4" />
-            Print
-          </Button>
-        )}
       </div>
 
       <Card>
@@ -128,7 +112,7 @@ export function PartDetails() {
               <Progress value={progress} className="h-2" />
             </div>
           </div>
-          {hasPermission("inventory.manage") && (
+          {hasPermission("inventory.manage") && part.source !== "repair" && (
             <div className="grid gap-3 md:grid-cols-[220px_130px_1fr_auto]">
               <Select value={part.status ?? "Work Started"} onValueChange={(status) => updateWorkStatus(status)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
@@ -186,14 +170,21 @@ export function PartDetails() {
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div><p className="text-sm text-muted-foreground">Item Name</p><p className="font-medium">{part.name}</p></div>
-                    <div><p className="text-sm text-muted-foreground">SKU</p><p className="font-medium">{part.sku}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Device Number</p><p className="font-medium">{part.sku}</p></div>
                     <div><p className="text-sm text-muted-foreground">Category</p><Badge variant="outline">{part.category}</Badge></div>
-                    <div><p className="text-sm text-muted-foreground">Location</p><p className="font-medium">{part.location || "-"}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Invoice Number</p><p className="font-medium">{part.invoiceNumber || part.location || "-"}</p></div>
                     <div><p className="text-sm text-muted-foreground">Customer Name</p><p className="font-medium">{part.supplier || "-"}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Customer Phone</p><p className="font-medium">{part.customerPhone || "-"}</p></div>
                     <div><p className="text-sm text-muted-foreground">Unit</p><p className="font-medium">{part.unit}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Brand / Model</p><p className="font-medium">{[part.brand, part.model].filter(Boolean).join(" / ") || "-"}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Serial Number</p><p className="font-medium">{part.serialNumber || "-"}</p></div>
                   </div>
                   <Separator />
-                  <div><p className="text-sm text-muted-foreground">Cost Price</p><p className="text-xl font-bold">Rs {part.costPrice.toLocaleString()}</p></div>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div><p className="text-sm text-muted-foreground">Total Amount</p><p className="text-xl font-bold">{formatAmount(part.totalAmount ?? part.costPrice ?? 0, 0)}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Received Amount</p><p className="text-xl font-bold text-success">{formatAmount(part.receivedAmount ?? part.sellingPrice ?? 0, 0)}</p></div>
+                    <div><p className="text-sm text-muted-foreground">Pending Amount</p><p className="text-xl font-bold text-warning">{formatAmount(part.pendingAmount ?? 0, 0)}</p></div>
+                  </div>
                 </CardContent>
               </Card>
             </div>

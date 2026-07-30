@@ -7,6 +7,7 @@ import { auth, firebaseApp } from "../../../firebase";
 import { useAuth } from "../../auth/auth-context";
 import { permissionModules } from "../../auth/permissions";
 import type { PermissionKey } from "../../auth/permissions";
+import { DataPagination } from "../../components/shared/data-pagination";
 import { Button } from "../../components/ui/button";
 import { Badge } from "../../components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
@@ -14,10 +15,12 @@ import { Checkbox } from "../../components/ui/checkbox";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
 import { Switch } from "../../components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { usePagination } from "../../hooks/use-pagination";
 import { usePersistentState } from "../../hooks/use-persistent-state";
-import type { AppUser } from "../../types/app-user";
+import type { AppStaffRole, AppUser } from "../../types/app-user";
 
 const emptyForm = {
   fullName: "",
@@ -26,6 +29,7 @@ const emptyForm = {
   password: "",
   phone: "",
   designation: "",
+  staffRole: "employee" as AppStaffRole,
   photoUrl: "",
   status: "active" as const,
   permissions: [] as PermissionKey[],
@@ -78,6 +82,7 @@ export function UserManagement() {
   const canAssign = hasPermission("users.assignPermissions");
   const canReset = hasPermission("users.resetPassword");
   const sortedUsers = useMemo(() => [...users].sort((a, b) => Number(Boolean(b.isSuperAdmin)) - Number(Boolean(a.isSuperAdmin)) || a.fullName.localeCompare(b.fullName)), [users]);
+  const userPagination = usePagination(sortedUsers, 10);
 
   const openCreate = () => {
     setEditing(null);
@@ -94,6 +99,7 @@ export function UserManagement() {
       password: "",
       phone: target.phone,
       designation: target.designation,
+      staffRole: target.staffRole ?? "employee",
       photoUrl: target.photoUrl ?? "",
       status: target.status,
       permissions: target.permissions,
@@ -150,6 +156,7 @@ export function UserManagement() {
       email,
       phone: form.phone.trim(),
       designation: form.designation.trim(),
+      staffRole: form.staffRole,
       status: editing?.isSuperAdmin ? "active" : form.status,
       createdAt: editing?.createdAt ?? new Date().toISOString(),
       lastLogin: editing?.lastLogin,
@@ -219,7 +226,7 @@ export function UserManagement() {
       <Card>
         <CardHeader><CardTitle>Users</CardTitle></CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-md border">
+          <div className="rounded-md border">
             <Table>
               <TableHeader>
                 <TableRow>
@@ -227,27 +234,29 @@ export function UserManagement() {
                   <TableHead>Username</TableHead>
                   <TableHead>Phone</TableHead>
                   <TableHead>Designation</TableHead>
+                  <TableHead>User Type</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Last Login</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedUsers.map((target) => (
+                {userPagination.pagedItems.map((target) => (
                   <TableRow key={target.id}>
                     <TableCell><div className="font-medium">{target.fullName}{target.isSuperAdmin && <Badge className="ml-2">Super Admin</Badge>}<p className="text-xs text-muted-foreground">{target.email}</p></div></TableCell>
                     <TableCell>{target.username}</TableCell>
                     <TableCell>{target.phone || "-"}</TableCell>
                     <TableCell>{target.designation || "-"}</TableCell>
+                    <TableCell><Badge variant="outline" className="capitalize">{target.staffRole ?? "employee"}</Badge></TableCell>
                     <TableCell><Badge variant={target.status === "active" ? "default" : "secondary"}>{target.status}</Badge></TableCell>
                     <TableCell>{target.lastLogin ? new Date(target.lastLogin).toLocaleString() : "Never"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        {canEdit && <Button variant="outline" size="icon" onClick={() => openEdit(target)}><Edit className="h-4 w-4" /></Button>}
+                        {canEdit && <Button variant="outline" size="icon" className="app-action-icon edit" title="Edit User" onClick={() => openEdit(target)}><Edit className="h-4 w-4" /></Button>}
                         {canCreate && !target.uid && <Button variant="outline" size="icon" title="Create Firebase login" onClick={() => createFirebaseLogin(target)}><UserPlus className="h-4 w-4" /></Button>}
                         {canReset && <Button variant="outline" size="icon" onClick={() => resetPassword(target)}><KeyRound className="h-4 w-4" /></Button>}
                         {canEdit && <Button variant="outline" size="icon" onClick={() => setStatus(target, target.status !== "active")} disabled={target.isSuperAdmin && target.email.toLowerCase() === user?.email?.toLowerCase()}><UserX className="h-4 w-4" /></Button>}
-                        {canDelete && <Button variant="destructive" size="icon" onClick={() => deleteUser(target)} disabled={target.isSuperAdmin || target.email.toLowerCase() === user?.email?.toLowerCase()}><Trash2 className="h-4 w-4" /></Button>}
+                        {canDelete && <Button variant="outline" size="icon" className="app-action-icon delete" title="Delete User" onClick={() => deleteUser(target)} disabled={target.isSuperAdmin || target.email.toLowerCase() === user?.email?.toLowerCase()}><Trash2 className="h-4 w-4" /></Button>}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -255,6 +264,15 @@ export function UserManagement() {
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={userPagination.page}
+            totalPages={userPagination.totalPages}
+            startItem={userPagination.startItem}
+            endItem={userPagination.endItem}
+            totalItems={userPagination.totalItems}
+            onPageChange={userPagination.setPage}
+            label="users"
+          />
         </CardContent>
       </Card>
 
@@ -268,7 +286,21 @@ export function UserManagement() {
               <div><Label>Email</Label><Input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} required disabled={Boolean(editing)} /></div>
               <div><Label>Password</Label><Input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder={editing ? "Use reset password" : "Minimum 6 characters"} required={!editing} /></div>
               <div><Label>Phone Number</Label><Input value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></div>
-              <div><Label>Designation</Label><Input value={form.designation} onChange={(event) => setForm({ ...form, designation: event.target.value })} /></div>
+              <div><Label>Designation</Label><Input value={form.designation} onChange={(event) => setForm({ ...form, designation: event.target.value })} placeholder="e.g. Console Repair" /></div>
+              <div>
+                <Label>User Type</Label>
+                <Select value={form.staffRole} onValueChange={(staffRole) => setForm({ ...form, staffRole: staffRole as AppStaffRole })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="technician">Technician</SelectItem>
+                    <SelectItem value="cashier">Cashier</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="support">Support</SelectItem>
+                    <SelectItem value="employee">Employee</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="md:col-span-2"><Label>Profile Photo URL</Label><Input value={form.photoUrl} onChange={(event) => setForm({ ...form, photoUrl: event.target.value })} /></div>
               <div className="flex items-center justify-between rounded-lg border p-3"><div><Label>Status</Label><p className="text-xs text-muted-foreground">Inactive users are signed out.</p></div><Switch checked={form.status === "active"} disabled={editing?.isSuperAdmin} onCheckedChange={(checked) => setForm({ ...form, status: checked ? "active" : "inactive" })} /></div>
             </div>

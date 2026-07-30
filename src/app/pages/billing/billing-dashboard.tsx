@@ -1,13 +1,16 @@
 import { AlertCircle, CheckCircle, DollarSign, FileText } from "lucide-react";
 import { Badge } from "../../components/ui/badge";
+import { DataPagination } from "../../components/shared/data-pagination";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../components/ui/table";
+import { usePagination } from "../../hooks/use-pagination";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { CustomerPayment } from "../../types/customer";
 import type { PosSale } from "../../types/pos-sale";
 import type { RepairTicket } from "../../types/repair-ticket";
+import { formatAmount } from "../../utils/formatting";
 
-const money = (value: number) => `Rs ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+const money = (value: number) => formatAmount(value);
 
 type BillingRow = {
   id: string;
@@ -81,6 +84,7 @@ export function BillingDashboard() {
   }));
 
   const rows = [...saleRows, ...repairRows, ...paymentRows].sort((a, b) => b.date.localeCompare(a.date));
+  const billingPagination = usePagination(rows, 10);
   const invoiceRows = [...saleRows, ...repairRows];
   const totalInvoices = invoiceRows.length;
   const totalBilled = invoiceRows.reduce((sum, row) => sum + row.total, 0);
@@ -104,26 +108,35 @@ export function BillingDashboard() {
       <Card>
         <CardHeader><CardTitle>Billing History</CardTitle></CardHeader>
         <CardContent>
-          <div className="overflow-x-auto rounded-md border">
-            <Table>
-              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Reference</TableHead><TableHead>Customer</TableHead><TableHead>Type</TableHead><TableHead>Detail</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Total</TableHead><TableHead className="text-right">Paid</TableHead><TableHead className="text-right">Pending</TableHead></TableRow></TableHeader>
+          <div className="rounded-md border">
+            <Table className="table-fixed">
+              <TableHeader><TableRow><TableHead className="w-[150px]">Date</TableHead><TableHead className="w-[140px]">Invoice Number</TableHead><TableHead className="w-[160px]">Customer</TableHead><TableHead className="w-[90px]">Type</TableHead><TableHead>Detail</TableHead><TableHead className="w-[90px]">Status</TableHead><TableHead className="w-[90px] text-right">Total</TableHead><TableHead className="hidden w-[90px] text-right md:table-cell">Paid</TableHead><TableHead className="hidden w-[90px] text-right md:table-cell">Pending</TableHead></TableRow></TableHeader>
               <TableBody>
-                {rows.length === 0 ? <TableRow><TableCell colSpan={9} className="py-8 text-center text-muted-foreground">No billing history yet.</TableCell></TableRow> : rows.map((row) => (
+                {rows.length === 0 ? <TableRow><TableCell colSpan={9} className="py-8 text-center text-muted-foreground">No billing history yet.</TableCell></TableRow> : billingPagination.pagedItems.map((row) => (
                   <TableRow key={`${row.type}-${row.id}-${row.date}`}>
-                    <TableCell>{new Date(row.date).toLocaleString()}</TableCell>
-                    <TableCell className="font-medium">{row.id}</TableCell>
-                    <TableCell>{row.customer}</TableCell>
+                    <TableCell className="truncate">{new Date(row.date).toLocaleString()}</TableCell>
+                    <TableCell className="truncate font-medium">{row.id}</TableCell>
+                    <TableCell className="truncate">{row.customer}</TableCell>
                     <TableCell>{row.type}</TableCell>
                     <TableCell className="max-w-[260px] truncate">{row.detail}</TableCell>
                     <TableCell><Badge variant={row.status === "paid" ? "default" : "secondary"}>{row.status}</Badge></TableCell>
                     <TableCell className="text-right">{row.total ? money(row.total) : "-"}</TableCell>
-                    <TableCell className="text-right text-success">{money(row.paid)}</TableCell>
-                    <TableCell className="text-right text-warning">{row.pending ? money(row.pending) : "-"}</TableCell>
+                    <TableCell className="hidden text-right text-success md:table-cell">{money(row.paid)}</TableCell>
+                    <TableCell className="hidden text-right text-warning md:table-cell">{row.pending ? money(row.pending) : "-"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
             </Table>
           </div>
+          <DataPagination
+            page={billingPagination.page}
+            totalPages={billingPagination.totalPages}
+            startItem={billingPagination.startItem}
+            endItem={billingPagination.endItem}
+            totalItems={billingPagination.totalItems}
+            onPageChange={billingPagination.setPage}
+            label="billing records"
+          />
         </CardContent>
       </Card>
     </div>

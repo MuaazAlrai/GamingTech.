@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Package, TrendingUp, AlertTriangle, Cpu, CalendarDays, LayoutGrid, Images, Plus, Pencil, Trash2, Printer } from "lucide-react";
+import { Package, TrendingUp, AlertTriangle, Cpu, CalendarDays, LayoutGrid, Images, Plus, Pencil, Trash2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../../components/ui/card";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
@@ -23,10 +23,9 @@ import {
 } from "../../components/ui/table";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { GpuItem } from "../../types/gpu-item";
-import { Checkbox } from "../../components/ui/checkbox";
-import { printGpuLabel } from "../../utils/print-gpu-label";
-import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../components/ui/select";
+import { formatAmount } from "../../utils/formatting";
+import { toast } from "sonner";
 
 type CatalogPart = { id: string; name: string; sku: string; category: string; stock: number; reorderLevel: number; sellingPrice: number };
 
@@ -37,7 +36,6 @@ export function InventoryDashboard() {
   const [parts] = usePersistentState<CatalogPart[]>("gamingtech.parts", []);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGpu, setEditingGpu] = useState<GpuItem | null>(null);
-  const [printAfterAdd, setPrintAfterAdd] = useState(true);
   const [selectedPartId, setSelectedPartId] = useState("");
   const [formData, setFormData] = useState({
     model: "",
@@ -104,14 +102,16 @@ export function InventoryDashboard() {
     setGpus((current) =>
       editingGpu ? current.map((gpu) => (gpu.id === editingGpu.id ? nextGpu : gpu)) : [...current, nextGpu],
     );
-    if (!editingGpu && printAfterAdd && !printGpuLabel(nextGpu)) {
-      toast.error("Print window was blocked. Use the Print Label button from the GPU list.");
-    }
     setDialogOpen(false);
+    toast.success(editingGpu ? "GPU updated." : "GPU added.");
   };
 
   const deleteGpu = (id: string) => {
+    const gpu = gpus.find((item) => item.id === id);
+    if (!gpu) return;
+    if (!window.confirm(`Delete ${gpu.id}? This GPU record will be removed immediately.`)) return;
     setGpus((current) => current.filter((gpu) => gpu.id !== id));
+    toast.success("GPU deleted.");
   };
 
   const gpuParts = parts.filter((part) => part.category.toLowerCase().includes("gpu"));
@@ -151,7 +151,7 @@ export function InventoryDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-muted-foreground">Total Value</p>
-                <h3 className="text-2xl font-bold mt-1">Rs {gpuValue.toLocaleString()}</h3>
+                <h3 className="text-2xl font-bold mt-1">{formatAmount(gpuValue, 0)}</h3>
               </div>
               <div className="bg-success/10 text-success p-3 rounded-lg">
                 <TrendingUp className="h-5 w-5" />
@@ -271,17 +271,11 @@ export function InventoryDashboard() {
                     <TableCell>{gpu.customer}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        <Button variant="ghost" size="sm" onClick={() => printGpuLabel(gpu)}>
-                          <Printer className="mr-2 h-4 w-4" />
-                          Print Label
+                        <Button variant="outline" size="icon" className="app-action-icon edit" title="Edit GPU" onClick={() => openEditDialog(gpu)}>
+                          <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="outline" size="sm" onClick={() => openEditDialog(gpu)}>
-                          <Pencil className="mr-2 h-4 w-4" />
-                          Edit
-                        </Button>
-                        <Button variant="destructive" size="sm" onClick={() => deleteGpu(gpu.id)}>
-                          <Trash2 className="mr-2 h-4 w-4" />
-                          Delete
+                        <Button variant="outline" size="icon" className="app-action-icon delete" title="Delete GPU" onClick={() => deleteGpu(gpu.id)}>
+                          <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -319,7 +313,7 @@ export function InventoryDashboard() {
               <Input id="gpuModel" value={formData.model} onChange={(event) => setFormData({ ...formData, model: event.target.value })} required />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gpuSerial">Serial / Repair ID</Label>
+              <Label htmlFor="gpuSerial">Device Number</Label>
               <Input id="gpuSerial" value={formData.serial} onChange={(event) => setFormData({ ...formData, serial: event.target.value })} required />
             </div>
             <div className="space-y-2">
@@ -330,12 +324,6 @@ export function InventoryDashboard() {
               <Label htmlFor="gpuCustomer">Customer</Label>
               <Input id="gpuCustomer" value={formData.customer} onChange={(event) => setFormData({ ...formData, customer: event.target.value })} required />
             </div>
-            {!editingGpu && (
-              <div className="flex items-center gap-2 rounded-md border p-3">
-                <Checkbox id="printGpuLabel" checked={printAfterAdd} onCheckedChange={(checked) => setPrintAfterAdd(checked === true)} />
-                <Label htmlFor="printGpuLabel" className="cursor-pointer">Print 80 × 50 mm label after adding GPU</Label>
-              </div>
-            )}
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
               <Button type="submit">{editingGpu ? "Save Changes" : "Add GPU"}</Button>

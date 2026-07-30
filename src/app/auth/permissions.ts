@@ -3,7 +3,6 @@ import {
   FileText,
   LayoutDashboard,
   ShoppingCart,
-  TrendingUp,
   UserCog,
   UserRound,
   Users,
@@ -44,14 +43,8 @@ export const permissionModules: PermissionModule[] = [
   { id: "customers", label: "Customers", description: "Customer profiles and ledgers", permissions: [
     { key: "customers.view", label: "View" }, { key: "customers.create", label: "Create" }, { key: "customers.edit", label: "Edit" }, { key: "customers.delete", label: "Delete" }, { key: "customers.print", label: "Print" }, { key: "customers.export", label: "Export" },
   ] },
-  { id: "suppliers", label: "Suppliers", description: "Supplier access for future purchasing", permissions: [
-    { key: "suppliers.view", label: "View" }, { key: "suppliers.create", label: "Create" }, { key: "suppliers.edit", label: "Edit" }, { key: "suppliers.delete", label: "Delete" },
-  ] },
   { id: "sales", label: "Sales POS", description: "POS, sales history and payments", permissions: [
     { key: "sales.view", label: "View" }, { key: "sales.create", label: "Create Sale" }, { key: "sales.edit", label: "Edit Sale" }, { key: "sales.delete", label: "Delete Sale" }, { key: "sales.print", label: "Print Invoice" }, { key: "sales.receivePayment", label: "Receive Payment" }, { key: "sales.export", label: "Export" }, { key: "sales.manage", label: "Manage" },
-  ] },
-  { id: "purchases", label: "Purchases", description: "Purchase orders and approvals", permissions: [
-    { key: "purchases.view", label: "View" }, { key: "purchases.create", label: "Create" }, { key: "purchases.edit", label: "Edit" }, { key: "purchases.delete", label: "Delete" }, { key: "purchases.approve", label: "Approve" },
   ] },
   { id: "expenses", label: "Expenses", description: "Expense records and approvals", permissions: [
     { key: "expenses.view", label: "View" }, { key: "expenses.create", label: "Create" }, { key: "expenses.edit", label: "Edit" }, { key: "expenses.delete", label: "Delete" }, { key: "expenses.approve", label: "Approve" },
@@ -61,9 +54,6 @@ export const permissionModules: PermissionModule[] = [
   ] },
   { id: "reports", label: "Reports", description: "Business reporting", permissions: [
     { key: "reports.view", label: "View" }, { key: "reports.export", label: "Export" }, { key: "reports.print", label: "Print" },
-  ] },
-  { id: "finance", label: "Finance", description: "Finance overview and controls", permissions: [
-    { key: "finance.view", label: "View" }, { key: "finance.create", label: "Create" }, { key: "finance.edit", label: "Edit" }, { key: "finance.delete", label: "Delete" }, { key: "finance.export", label: "Export" }, { key: "finance.manage", label: "Manage" },
   ] },
   { id: "settings", label: "Settings", description: "System settings", permissions: [
     { key: "settings.view", label: "View" }, { key: "settings.edit", label: "Edit" },
@@ -102,7 +92,6 @@ export const appNavigation = [
   { name: "POS", href: "/pos", icon: ShoppingCart, permission: "sales.view" as PermissionKey },
   { name: "Billing", href: "/billing", icon: FileText, permission: "billing.view" as PermissionKey },
   { name: "Reports", href: "/reports", icon: FileText, permission: "reports.view" as PermissionKey },
-  { name: "Finance", href: "/finance", icon: TrendingUp, permission: "finance.view" as PermissionKey },
   { name: "Users", href: "/users", icon: UserCog, permission: "users.view" as PermissionKey },
   { name: "Profile", href: "/profile", icon: UserRound, permission: "profile.view" as PermissionKey },
 ];

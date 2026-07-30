@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   DollarSign,
   Users,
-  AlertTriangle,
   TrendingUp,
   TrendingDown,
   ArrowRight,
@@ -107,7 +106,7 @@ export function Dashboard() {
 
   const today = new Date().toISOString().slice(0, 10);
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const completedSales = sales.filter((sale) => (sale.status ?? "completed") === "completed");
+  const completedSales = sales.filter((sale) => (sale.invoiceType === "repair" || sale.repairId) && (sale.status ?? "completed") === "completed");
   const todaysSales = completedSales.filter((sale) => sale.date.slice(0, 10) === today);
   const todaysTickets = tickets.filter((ticket) => ticket.createdAt?.slice(0, 10) === today);
   const activeTickets = tickets.filter((ticket) =>
@@ -115,7 +114,6 @@ export function Dashboard() {
       ticket.status,
     ),
   );
-  const waitingParts = tickets.filter((ticket) => ticket.status === "waiting_parts");
   const readyTickets = tickets.filter((ticket) => ticket.status === "ready");
   const repairNotifications = tickets.flatMap((ticket) => {
     const due = getRepairDueState(ticket);
@@ -126,7 +124,6 @@ export function Dashboard() {
       due.isWithinThreeDays && !due.isDueToday && !due.isDueTomorrow && "Due within 3 days",
       due.isOverdue && "Overdue",
       ticket.status === "waiting_approval" && "Awaiting customer approval",
-      ticket.status === "waiting_parts" && "Awaiting parts",
       ticket.status === "ready" && "Ready for pickup",
       ticket.priority === "high" && "High priority repair",
       ticket.status === "completed" && unpaid > 0 && "Completed with unpaid balance",
@@ -141,9 +138,6 @@ export function Dashboard() {
   const monthlyRevenue = completedSales
     .filter((sale) => sale.date.slice(0, 7) === currentMonth)
     .reduce((sum, sale) => sum + sale.total, 0);
-  const lowStockItems = parts
-    .filter((part) => part.stock <= part.reorderLevel)
-    .sort((a, b) => a.stock - b.stock);
   const inventoryValue = parts.reduce((sum, part) => sum + part.stock * part.costPrice, 0);
 
   const monthFormatter = new Intl.DateTimeFormat(undefined, { month: "short" });
@@ -172,7 +166,6 @@ export function Dashboard() {
       value: tickets.filter((ticket) => ticket.status === "repairing").length,
       color: "#0F8B8D",
     },
-    { name: "Waiting Parts", value: waitingParts.length, color: "#D94841" },
     {
       name: "Testing",
       value: tickets.filter((ticket) => ticket.status === "testing").length,
@@ -182,12 +175,12 @@ export function Dashboard() {
   ];
 
   const recentActivities: Activity[] = [
-    ...sales.map((sale) => ({
+    ...completedSales.map((sale) => ({
       id: sale.id,
       type: "sale",
-      title: "POS sale completed",
-      description: `${sale.items.length} item types sold for ${formatCurrency(sale.total)}`,
-      customer: "POS",
+      title: "Repair invoice generated",
+      description: `${sale.deviceNumber || sale.id} for ${formatCurrency(sale.total)}`,
+      customer: sale.customerName || "Customer",
       time: formatRelativeTime(sale.date),
       avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${sale.id}`,
       date: sale.date,
@@ -248,16 +241,6 @@ export function Dashboard() {
       href: "/repairs?view=active",
     },
     {
-      title: "Waiting for Parts",
-      value: String(waitingParts.length),
-      change: `${parts.length} stock items`,
-      trend: "down",
-      icon: Package,
-      color: "text-destructive",
-      bgColor: "bg-destructive/10",
-      href: "/repairs?status=waiting_parts",
-    },
-    {
       title: "Ready for Pickup",
       value: String(readyTickets.length),
       change: "ready",
@@ -268,14 +251,14 @@ export function Dashboard() {
       href: "/repairs?status=ready",
     },
     {
-      title: "Today's Revenue",
+      title: "Today's Repair Revenue",
       value: formatCurrency(todaysRevenue),
-      change: `${todaysSales.length} sales`,
+      change: `${todaysSales.length} repair invoices`,
       trend: "up",
       icon: DollarSign,
       color: "text-success",
       bgColor: "bg-success/10",
-      href: "/pos/sales-history",
+      href: "/pos/sale",
     },
     {
       title: "Monthly Revenue",
@@ -297,16 +280,6 @@ export function Dashboard() {
       bgColor: "bg-primary/10",
       href: "/customers",
     },
-    {
-      title: "Low Stock Items",
-      value: String(lowStockItems.length),
-      change: `${parts.length} items`,
-      trend: "alert",
-      icon: AlertTriangle,
-      color: "text-warning",
-      bgColor: "bg-warning/10",
-      href: "/inventory?view=low",
-    },
   ];
 
   return (
@@ -326,7 +299,6 @@ export function Dashboard() {
                     <div className="flex items-center gap-1 mt-2">
                       {stat.trend === "up" && <TrendingUp className="h-4 w-4 text-success" />}
                       {stat.trend === "down" && <TrendingDown className="h-4 w-4 text-destructive" />}
-                      {stat.trend === "alert" && <AlertTriangle className="h-4 w-4 text-warning" />}
                       <span
                         className={`text-sm font-medium ${
                           stat.trend === "up"
@@ -480,8 +452,8 @@ export function Dashboard() {
         </Card>
       </div>
 
-      {/* Recent Activity & Low Stock */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Recent Activity */}
+      <div className="grid grid-cols-1 gap-6">
         {/* Recent Activities */}
         <Card className="shadow-sm">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -532,47 +504,6 @@ export function Dashboard() {
           </CardContent>
         </Card>
 
-        {/* Low Stock Items */}
-        <Card className="shadow-sm">
-          <CardHeader className="flex flex-row items-center justify-between">
-            <div>
-              <CardTitle>Low Stock Alert</CardTitle>
-              <CardDescription>Items need reordering</CardDescription>
-            </div>
-            <Link to="/inventory">
-              <Button variant="ghost" size="sm">
-                View All
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {lowStockItems.map((item, index) => (
-                <div key={index} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <p className="text-sm font-medium">{item.name}</p>
-                      <p className="text-xs text-muted-foreground">{item.category}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-medium text-destructive">
-                        {item.stock} {item.unit}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Min: {item.reorderLevel}
-                      </p>
-                    </div>
-                  </div>
-                  <Progress
-                    value={(item.stock / item.reorderLevel) * 100}
-                    className="h-2"
-                  />
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Quick Actions */}

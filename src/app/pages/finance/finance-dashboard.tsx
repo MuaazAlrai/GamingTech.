@@ -7,8 +7,9 @@ import type { BusinessExpense } from "../../types/expense";
 import type { Part } from "../../types/part";
 import type { PosSale } from "../../types/pos-sale";
 import type { RepairTicket } from "../../types/repair-ticket";
+import { formatAmount } from "../../utils/formatting";
 
-const money = (value: number) => `Rs ${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+const money = (value: number) => formatAmount(value);
 
 type LedgerRow = {
   id: string;
@@ -93,7 +94,7 @@ export function FinanceDashboard() {
         <CardContent>
           <div className="overflow-x-auto rounded-md border">
             <Table>
-              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Reference</TableHead><TableHead>Source</TableHead><TableHead>Description</TableHead><TableHead className="text-right">Income</TableHead><TableHead className="text-right">Expense / Cost</TableHead><TableHead className="text-right">Net</TableHead></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Invoice Number</TableHead><TableHead>Source</TableHead><TableHead>Description</TableHead><TableHead className="text-right">Income</TableHead><TableHead className="text-right">Expense / Cost</TableHead><TableHead className="text-right">Net</TableHead></TableRow></TableHeader>
               <TableBody>
                 {ledgerRows.length === 0 ? <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No finance history yet.</TableCell></TableRow> : ledgerRows.map((row) => (
                   <TableRow key={`${row.source}-${row.id}-${row.date}`}>
