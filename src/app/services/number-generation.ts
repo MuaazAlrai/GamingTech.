@@ -35,6 +35,18 @@ const configs: Record<NumberKind, NumberConfig> = {
   },
 };
 
+const localReservations: Record<NumberKind, Set<string>> = {
+  device: new Set<string>(),
+  invoice: new Set<string>(),
+  serial: new Set<string>(),
+};
+
+const localCounterMemory: Record<NumberKind, number> = {
+  device: 0,
+  invoice: 0,
+  serial: 0,
+};
+
 const sequencePattern = (prefix: string) => new RegExp(`^${prefix}-(\\d+)$`, "i");
 
 function formatNumber(prefix: string, sequence: number, minWidth: number) {
@@ -89,55 +101,137 @@ function latestSequenceFromRecords(records: unknown, config: NumberConfig) {
   return latest;
 }
 
+function reserveLocalNumber(kind: NumberKind, value: string) {
+  localReservations[kind].add(value.trim().toUpperCase());
+}
+
+function locallyReservedNumbers(kind: NumberKind) {
+  return localReservations[kind];
+}
+
+function fallbackCounterStorageKey(kind: NumberKind) {
+  return `gamingtech.numberCounter.${kind}`;
+}
+
+function readStoredLocalCounter(kind: NumberKind) {
+  const memoryValue = localCounterMemory[kind];
+
+  if (typeof window === "undefined") return memoryValue;
+
+  try {
+    const rawValue = window.localStorage.getItem(fallbackCounterStorageKey(kind));
+    const parsedValue = Number(rawValue ?? 0);
+    return Number.isSafeInteger(parsedValue) && parsedValue > 0
+      ? Math.max(memoryValue, parsedValue)
+      : memoryValue;
+  } catch {
+    return memoryValue;
+  }
+}
+
+function persistLocalCounter(kind: NumberKind, sequence: number) {
+  if (!Number.isSafeInteger(sequence) || sequence <= 0) return;
+
+  localCounterMemory[kind] = Math.max(localCounterMemory[kind], sequence);
+
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(fallbackCounterStorageKey(kind), String(localCounterMemory[kind]));
+  } catch {
+    // Ignore storage failures and keep the in-memory fallback.
+  }
+}
+
+async function generateLocalFallbackNumber(kind: NumberKind) {
+  const config = configs[kind];
+  let existingNumbers = new Set<string>();
+  let latestExistingSequence = 0;
+
+  try {
+    const remoteSnapshots = await Promise.all(config.appStateKeys.map((key) => getDoc(doc(db, "appState", key))));
+    const records = remoteSnapshots.flatMap((snapshot) => {
+      const value = snapshot.data()?.value;
+      return Array.isArray(value) ? value : [];
+    });
+    existingNumbers = existingNumbersFromRecords(records, config);
+    latestExistingSequence = latestSequenceFromRecords(records, config);
+  } catch (error) {
+    console.warn(`Unable to read remote records for local ${kind} fallback.`, error);
+  }
+
+  const reservedNumbers = locallyReservedNumbers(kind);
+  let nextSequence = Math.max(latestExistingSequence, readStoredLocalCounter(kind)) + 1;
+  let nextValue = formatNumber(config.prefix, nextSequence, config.minWidth);
+
+  while (existingNumbers.has(nextValue.toUpperCase()) || reservedNumbers.has(nextValue.toUpperCase())) {
+    nextSequence += 1;
+    nextValue = formatNumber(config.prefix, nextSequence, config.minWidth);
+  }
+
+  reserveLocalNumber(kind, nextValue);
+  persistLocalCounter(kind, nextSequence);
+  return nextValue;
+}
+
 export async function generateNextNumber(kind: NumberKind) {
   const config = configs[kind];
   const counterRef = doc(db, "numberCounters", kind);
   const stateRefs = config.appStateKeys.map((key) => doc(db, "appState", key));
 
-  return runTransaction(db, async (transaction) => {
-    const [counterSnapshot, ...stateSnapshots] = await Promise.all([
-      transaction.get(counterRef),
-      ...stateRefs.map((stateRef) => transaction.get(stateRef)),
-    ]);
+  try {
+    const nextValue = await runTransaction(db, async (transaction) => {
+      const [counterSnapshot, ...stateSnapshots] = await Promise.all([
+        transaction.get(counterRef),
+        ...stateRefs.map((stateRef) => transaction.get(stateRef)),
+      ]);
 
-    const records = stateSnapshots.flatMap((snapshot) => {
-      const value = snapshot.data()?.value;
-      return Array.isArray(value) ? value : [];
+      const records = stateSnapshots.flatMap((snapshot) => {
+        const value = snapshot.data()?.value;
+        return Array.isArray(value) ? value : [];
+      });
+      const existingNumbers = existingNumbersFromRecords(records, config);
+      const latestExistingSequence = latestSequenceFromRecords(records, config);
+      const latestCounterSequence = Number(counterSnapshot.data()?.lastSequence ?? 0);
+      let nextSequence = Math.max(latestExistingSequence, latestCounterSequence) + 1;
+      let nextValue = formatNumber(config.prefix, nextSequence, config.minWidth);
+
+      while (existingNumbers.has(nextValue.toUpperCase())) {
+        nextSequence += 1;
+        nextValue = formatNumber(config.prefix, nextSequence, config.minWidth);
+      }
+
+      const reservationRef = doc(db, "numberReservations", `${kind}_${nextValue}`);
+      const reservationSnapshot = await transaction.get(reservationRef);
+      if (reservationSnapshot.exists()) {
+        throw new Error(`${nextValue} is already reserved. Please save again.`);
+      }
+
+      transaction.set(counterRef, {
+        kind,
+        prefix: config.prefix,
+        minWidth: config.minWidth,
+        lastSequence: nextSequence,
+        lastValue: nextValue,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+      transaction.set(reservationRef, {
+        kind,
+        value: nextValue,
+        sequence: nextSequence,
+        createdAt: serverTimestamp(),
+      });
+
+      return nextValue;
     });
-    const existingNumbers = existingNumbersFromRecords(records, config);
-    const latestExistingSequence = latestSequenceFromRecords(records, config);
-    const latestCounterSequence = Number(counterSnapshot.data()?.lastSequence ?? 0);
-    let nextSequence = Math.max(latestExistingSequence, latestCounterSequence) + 1;
-    let nextValue = formatNumber(config.prefix, nextSequence, config.minWidth);
 
-    while (existingNumbers.has(nextValue.toUpperCase())) {
-      nextSequence += 1;
-      nextValue = formatNumber(config.prefix, nextSequence, config.minWidth);
-    }
-
-    const reservationRef = doc(db, "numberReservations", `${kind}_${nextValue}`);
-    const reservationSnapshot = await transaction.get(reservationRef);
-    if (reservationSnapshot.exists()) {
-      throw new Error(`${nextValue} is already reserved. Please save again.`);
-    }
-
-    transaction.set(counterRef, {
-      kind,
-      prefix: config.prefix,
-      minWidth: config.minWidth,
-      lastSequence: nextSequence,
-      lastValue: nextValue,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
-    transaction.set(reservationRef, {
-      kind,
-      value: nextValue,
-      sequence: nextSequence,
-      createdAt: serverTimestamp(),
-    });
-
+    reserveLocalNumber(kind, nextValue);
+    persistLocalCounter(kind, readAnySequence(nextValue, config) ?? 0);
     return nextValue;
-  });
+  } catch (error) {
+    console.warn(`Falling back to local ${kind} number generation.`, error);
+    return generateLocalFallbackNumber(kind);
+  }
 }
 
 export async function generateRepairNumbers() {

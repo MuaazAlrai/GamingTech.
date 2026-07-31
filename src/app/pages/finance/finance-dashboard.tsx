@@ -8,6 +8,7 @@ import type { Part } from "../../types/part";
 import type { PosSale } from "../../types/pos-sale";
 import type { RepairTicket } from "../../types/repair-ticket";
 import { formatAmount } from "../../utils/formatting";
+import { displayInvoiceNumber } from "../../utils/invoice-number";
 
 const money = (value: number) => formatAmount(value);
 
@@ -50,7 +51,7 @@ export function FinanceDashboard() {
       expense: saleCost(sale),
     })),
     ...repairs.filter((ticket) => ["completed", "delivered"].includes(ticket.status)).map((ticket) => ({
-      id: ticket.invoiceNumber || ticket.ticketNumber || ticket.id,
+      id: displayInvoiceNumber(ticket.invoiceNumber, ticket.ticketNumber, ticket.id),
       date: ticket.createdAt,
       source: "Repair",
       description: `${ticket.customer} - ${ticket.device}`,

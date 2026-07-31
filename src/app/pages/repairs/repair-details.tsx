@@ -8,6 +8,7 @@ import {
   Edit,
   Plus,
   Smartphone,
+  Trash2,
   User,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -23,10 +24,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Separator } from "../../components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { Textarea } from "../../components/ui/textarea";
+import { useAuth } from "../../auth/auth-context";
 import { usePersistentState } from "../../hooks/use-persistent-state";
 import type { Customer } from "../../types/customer";
 import type { RepairPartUsed, RepairTicket } from "../../types/repair-ticket";
 import { formatAmount } from "../../utils/formatting";
+import { displayInvoiceNumber } from "../../utils/invoice-number";
 import { getRepairDueState, getTimelineProgress, labelForRepairStatus, progressForRepairStatus, repairStatusOptions } from "../../utils/repair-status";
 
 const statusOptions = repairStatusOptions.map((status) => ({ value: status, label: labelForRepairStatus(status), progress: progressForRepairStatus(status) }));
@@ -38,11 +41,13 @@ export function RepairDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   const { id } = useParams();
+  const { user, appUser } = useAuth();
   const [tickets, setTickets] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
   const [customers] = usePersistentState<Customer[]>("gamingtech.customers", []);
   const ticket = tickets.find((item) => item.id === id || item.repairId === id || item.ticketNumber === id || item.deviceNumber === id || item.invoiceNumber === id);
   const [editOpen, setEditOpen] = useState(false);
   const [partForm, setPartForm] = useState({ name: "", quantity: "1", cost: "0" });
+  const [editingPartId, setEditingPartId] = useState("");
   const [statusNote, setStatusNote] = useState("");
 
   const customer = useMemo(() => {
@@ -71,11 +76,22 @@ export function RepairDetails() {
 
   const parts = ticket.partsUsed ?? [];
   const historyEvents = ticket.statusHistory?.length
-    ? ticket.statusHistory.map((entry) => ({ date: entry.date, status: entry.status, note: entry.note || entry.label || "Status updated.", technician: entry.technician, progress: entry.progress }))
+    ? ticket.statusHistory.map((entry) => ({
+      date: entry.date,
+      status: entry.status,
+      note: entry.note || entry.label || "Status updated.",
+      technician: entry.technician,
+      progress: entry.progress,
+      changedByName: entry.changedByName,
+      changedByEmail: entry.changedByEmail,
+    }))
     : ticket.timeline ?? [{ date: ticket.createdAt, status: ticket.status, note: "Ticket created.", technician: ticket.technician, progress: progressForRepairStatus(ticket.status) }];
   const timeline = [...historyEvents]
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   const progress = ticket.statusHistory?.[0]?.progress ?? ticket.timeline?.[0]?.progress ?? progressForRepairStatus(ticket.status);
+  const latestStatusChangedBy = ticket.statusHistory?.[0]?.changedByName || ticket.statusHistory?.[0]?.changedByEmail || "Not recorded";
+  const visibleDeviceNumber = ticket.deviceNumber || ticket.ticketNumber || ticket.id;
+  const visibleInvoiceNumber = displayInvoiceNumber(ticket.invoiceNumber, ticket.ticketNumber, ticket.id);
   const dueState = getRepairDueState(ticket);
   const partsTotal = parts.reduce((sum, part) => sum + part.quantity * part.cost, 0);
   const labourCharges = ticket.labourCharges ?? Math.max(0, ticket.amount - partsTotal);
@@ -93,12 +109,27 @@ export function RepairDetails() {
   const changeStatus = (status: string) => {
     const changedAt = new Date().toISOString();
     const note = statusNote.trim() || `Status changed to ${labelForStatus(status)}.`;
+    const changedByName = appUser?.fullName || user?.displayName || user?.email || "Staff";
+    const changedByEmail = user?.email || appUser?.email || "";
+    const changedByUid = user?.uid || appUser?.uid || "";
     updateTicket((current) => ({
       ...current,
       status,
       openStatus: ["completed", "delivered", "dead", "scrap"].includes(status) ? "Closed" : "Open",
       timeline: [{ date: changedAt, status, note, technician: current.technician, progress: progressForRepairStatus(status) }, ...(current.timeline ?? [])],
-      statusHistory: [{ id: `STATUS-${Date.now()}`, date: changedAt, status, label: labelForStatus(status), note, technician: current.technician, technicianId: current.currentTechnicianId, progress: progressForRepairStatus(status) }, ...(current.statusHistory ?? [])],
+      statusHistory: [{
+        id: `STATUS-${Date.now()}`,
+        date: changedAt,
+        status,
+        label: labelForStatus(status),
+        note,
+        technician: current.technician,
+        technicianId: current.currentTechnicianId,
+        changedByName,
+        changedByEmail: changedByEmail || undefined,
+        changedByUid: changedByUid || undefined,
+        progress: progressForRepairStatus(status),
+      }, ...(current.statusHistory ?? [])],
     }));
     setStatusNote("");
     toast.success("Repair status updated.");
@@ -145,10 +176,15 @@ export function RepairDetails() {
     toast.success("Repair ticket updated.");
   };
 
+  const resetPartForm = () => {
+    setPartForm({ name: "", quantity: "1", cost: "0" });
+    setEditingPartId("");
+  };
+
   const addPart = (event: React.FormEvent) => {
     event.preventDefault();
     const part: RepairPartUsed = {
-      id: `PART-${Date.now()}`,
+      id: editingPartId || `PART-${Date.now()}`,
       name: partForm.name.trim(),
       quantity: Number(partForm.quantity),
       cost: Number(partForm.cost),
@@ -157,13 +193,65 @@ export function RepairDetails() {
     const addedAt = new Date().toISOString();
     updateTicket((current) => ({
       ...current,
-      partsUsed: [part, ...(current.partsUsed ?? [])],
-      invoiceItems: [{ id: `INVITEM-${Date.now()}`, description: part.name, quantity: part.quantity, unitPrice: part.cost, type: "part", partId: part.id }, ...(current.invoiceItems ?? [])],
-      timeline: [{ date: addedAt, status: current.status, note: `Part added: ${part.name} x${part.quantity}.`, technician: current.technician, partsAdded: `${part.name} x${part.quantity}`, progress: progressForRepairStatus(current.status) }, ...(current.timeline ?? [])],
-      repairNotes: [{ id: `NOTE-${Date.now()}`, date: addedAt, note: `Part added: ${part.name} x${part.quantity}.`, author: current.technician, visibility: "internal" }, ...(current.repairNotes ?? [])],
+      partsUsed: editingPartId
+        ? (current.partsUsed ?? []).map((item) => item.id === editingPartId ? part : item)
+        : [part, ...(current.partsUsed ?? [])],
+      invoiceItems: editingPartId
+        ? (current.invoiceItems ?? []).map((item) => item.partId === editingPartId ? { ...item, description: part.name, quantity: part.quantity, unitPrice: part.cost } : item)
+        : [{ id: `INVITEM-${Date.now()}`, description: part.name, quantity: part.quantity, unitPrice: part.cost, type: "part", partId: part.id }, ...(current.invoiceItems ?? [])],
+      timeline: [{
+        date: addedAt,
+        status: current.status,
+        note: editingPartId ? `Part updated: ${part.name} x${part.quantity}.` : `Part added: ${part.name} x${part.quantity}.`,
+        technician: current.technician,
+        partsAdded: `${part.name} x${part.quantity}`,
+        progress: progressForRepairStatus(current.status),
+      }, ...(current.timeline ?? [])],
+      repairNotes: [{
+        id: `NOTE-${Date.now()}`,
+        date: addedAt,
+        note: editingPartId ? `Part updated: ${part.name} x${part.quantity}.` : `Part added: ${part.name} x${part.quantity}.`,
+        author: current.technician,
+        visibility: "internal",
+      }, ...(current.repairNotes ?? [])],
     }));
-    setPartForm({ name: "", quantity: "1", cost: "0" });
-    toast.success("Part added to repair.");
+    resetPartForm();
+    toast.success(editingPartId ? "Part updated." : "Part added to repair.");
+  };
+
+  const startEditPart = (part: RepairPartUsed) => {
+    setEditingPartId(part.id);
+    setPartForm({
+      name: part.name,
+      quantity: String(part.quantity),
+      cost: String(part.cost),
+    });
+  };
+
+  const deletePart = (part: RepairPartUsed) => {
+    if (!window.confirm(`Delete ${part.name}? This part will be removed immediately.`)) return;
+    const deletedAt = new Date().toISOString();
+    updateTicket((current) => ({
+      ...current,
+      partsUsed: (current.partsUsed ?? []).filter((item) => item.id !== part.id),
+      invoiceItems: (current.invoiceItems ?? []).filter((item) => item.partId !== part.id),
+      timeline: [{
+        date: deletedAt,
+        status: current.status,
+        note: `Part removed: ${part.name}.`,
+        technician: current.technician,
+        progress: progressForRepairStatus(current.status),
+      }, ...(current.timeline ?? [])],
+      repairNotes: [{
+        id: `NOTE-${Date.now()}`,
+        date: deletedAt,
+        note: `Part removed: ${part.name}.`,
+        author: current.technician,
+        visibility: "internal",
+      }, ...(current.repairNotes ?? [])],
+    }));
+    if (editingPartId === part.id) resetPartForm();
+    toast.success("Part deleted.");
   };
 
   const customerProfileId = customer?.id ?? ticket.customerId;
@@ -184,6 +272,7 @@ export function RepairDetails() {
               <Badge variant="outline" className="capitalize">{ticket.priority} Priority</Badge>
             </div>
             <p className="mt-1 text-muted-foreground">Created on {new Date(ticket.createdAt).toLocaleString()}</p>
+            <p className="text-xs text-muted-foreground">Status changed by: {latestStatusChangedBy}</p>
           </div>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -194,7 +283,7 @@ export function RepairDetails() {
 
       <Card><CardContent className="space-y-4 p-6"><div className="flex items-center justify-between"><span className="text-sm font-medium">Repair Progress</span><span className="text-sm font-medium">{progress}%</span></div><Progress value={progress} className="h-2" /><div className="grid gap-3 md:grid-cols-[220px_1fr_auto]"><Select value={ticket.status} onValueChange={changeStatus}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{statusOptions.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent></Select><Input value={statusNote} onChange={(event) => setStatusNote(event.target.value)} placeholder="Status note" /><Button variant="outline" onClick={() => changeStatus(ticket.status)}>Add Note</Button></div></CardContent></Card>
 
-      <Card><CardContent className="grid gap-4 p-5 md:grid-cols-4"><div className="rounded-lg border bg-primary/5 p-4"><p className="text-sm text-muted-foreground">Device Number</p><p className="text-xl font-bold text-primary">{ticket.deviceNumber || ticket.ticketNumber || ticket.id}</p><p className="mt-1 text-xs text-muted-foreground">This device intake number</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Invoice Number</p><p className="font-semibold">{ticket.invoiceNumber || ticket.ticketNumber || ticket.id}</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Name</p><p className="font-semibold">{ticket.customer}</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Phone</p><p className="font-semibold">{ticket.customerPhone || customer?.phone || "-"}</p></div></CardContent></Card>
+      <Card><CardContent className="grid gap-4 p-5 md:grid-cols-4"><div className="rounded-lg border bg-primary/5 p-4"><p className="text-sm text-muted-foreground">Device Number</p><p className="text-xl font-bold text-primary">{visibleDeviceNumber}</p><p className="mt-1 text-xs text-muted-foreground">This device intake number</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Invoice Number</p><p className="font-semibold">{visibleInvoiceNumber}</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Name</p><p className="font-semibold">{ticket.customer}</p></div><div className="rounded-lg border p-4"><p className="text-sm text-muted-foreground">Customer Phone</p><p className="font-semibold">{ticket.customerPhone || customer?.phone || "-"}</p></div></CardContent></Card>
 
       <Card>
         <CardHeader><CardTitle>Repair Summary</CardTitle></CardHeader>
@@ -202,8 +291,8 @@ export function RepairDetails() {
           {[
             ["Customer Name", ticket.customer],
             ["Customer Phone", ticket.customerPhone || customer?.phone || "-"],
-            ["Device Number", ticket.deviceNumber || ticket.ticketNumber || ticket.id],
-            ["Invoice Number", ticket.invoiceNumber || ticket.ticketNumber || ticket.id],
+            ["Device Number", visibleDeviceNumber],
+            ["Invoice Number", visibleInvoiceNumber],
             ["Device Type", ticket.device],
             ["Device Category", ticket.category || "-"],
             ["Brand", ticket.brand || "-"],
@@ -213,6 +302,7 @@ export function RepairDetails() {
             ["Assigned Technician", ticket.technician || "Unassigned"],
             ["Previous Visits Device Link", ticket.physicalDeviceId || "-"],
             ["Current Status", labelForStatus(ticket.status)],
+            ["Status Changed By", latestStatusChangedBy],
             ["Progress Percentage", `${progress}%`],
             ["Priority", ticket.priority],
             ["Received Date", new Date(ticket.createdAt).toLocaleString()],
@@ -241,8 +331,8 @@ export function RepairDetails() {
           <Tabs defaultValue="details" className="w-full">
             <TabsList className="grid w-full grid-cols-3"><TabsTrigger value="details">Details</TabsTrigger><TabsTrigger value="timeline">Timeline</TabsTrigger><TabsTrigger value="parts">Parts Used</TabsTrigger></TabsList>
             <TabsContent value="details" className="space-y-6"><Card><CardHeader><CardTitle>Device Information</CardTitle></CardHeader><CardContent className="space-y-4"><div className="grid grid-cols-2 gap-4"><div><p className="text-sm text-muted-foreground">Device</p><p className="font-medium">{ticket.device}</p></div><div><p className="text-sm text-muted-foreground">Brand</p><p className="font-medium">{ticket.brand || "-"}</p></div><div><p className="text-sm text-muted-foreground">Model</p><p className="font-medium">{ticket.model || "-"}</p></div><div><p className="text-sm text-muted-foreground">Serial Number</p><p className="font-medium">{ticket.serialNumber || "-"}</p></div></div><Separator /><div><p className="mb-2 text-sm text-muted-foreground">Accessories Included</p><p className="font-medium">{ticket.accessories || "-"}</p></div></CardContent></Card><Card><CardHeader><CardTitle>Problem Description</CardTitle></CardHeader><CardContent className="space-y-4"><div><p className="mb-2 text-sm text-muted-foreground">Issue Title</p><p className="text-lg font-medium">{ticket.issue}</p></div><Separator /><div><p className="mb-2 text-sm text-muted-foreground">Detailed Description</p><p className="text-sm">{ticket.issueDescription || "-"}</p></div><Separator /><div><p className="mb-2 text-sm text-muted-foreground">Device Condition</p><div className="flex flex-wrap gap-2">{(ticket.condition ?? []).length ? ticket.condition?.map((cond) => <Badge key={cond} variant="outline">{cond}</Badge>) : <span className="text-sm text-muted-foreground">No condition notes</span>}</div></div><div><p className="mb-2 text-sm text-muted-foreground">Condition Comment</p><p className="text-sm">{ticket.conditionComment || "-"}</p></div></CardContent></Card></TabsContent>
-            <TabsContent value="timeline"><Card><CardHeader><CardTitle>Repair Timeline and Progress</CardTitle></CardHeader><CardContent><div className="mb-6 grid gap-2 md:grid-cols-4">{timeline.map((event, index) => { const eventProgress = getTimelineProgress(event); return <div key={`${event.date}-step-${index}`} className="rounded-md border p-3"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-sm font-medium">{labelForStatus(event.status)}</span><span className="text-xs text-muted-foreground">{eventProgress}%</span></div><Progress value={eventProgress} className="h-2" /><p className="mt-2 text-xs text-muted-foreground">{new Date(event.date).toLocaleDateString()}</p></div>; })}</div><div className="space-y-6">{timeline.map((event, index) => <div key={`${event.date}-${index}`} className="flex gap-4"><div className="flex flex-col items-center"><div className="h-3 w-3 rounded-full bg-primary" />{index !== timeline.length - 1 && <div className="mt-2 h-full w-0.5 bg-border" />}</div><div className="flex-1 pb-6"><div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{labelForStatus(event.status)}</p><p className="text-xs text-muted-foreground">Progress {getTimelineProgress(event)}%{event.technician ? ` · ${event.technician}` : ""}</p></div><p className="text-sm text-muted-foreground">{new Date(event.date).toLocaleString()}</p></div>{event.diagnosis && <p className="text-sm"><span className="font-medium">Diagnosis/work:</span> {event.diagnosis}</p>}{event.partsAdded && <p className="text-sm"><span className="font-medium">Parts added:</span> {event.partsAdded}</p>}<p className="text-sm text-muted-foreground">{event.note}</p></div></div>)}</div></CardContent></Card></TabsContent>
-            <TabsContent value="parts" className="space-y-4"><Card><CardHeader><CardTitle>Parts & Materials</CardTitle></CardHeader><CardContent className="space-y-4"><form onSubmit={addPart} className="grid gap-3 md:grid-cols-[1fr_100px_140px_auto]"><Input value={partForm.name} onChange={(event) => setPartForm({ ...partForm, name: event.target.value })} placeholder="Part name" /><Input type="number" min="1" value={partForm.quantity} onChange={(event) => setPartForm({ ...partForm, quantity: event.target.value })} /><Input type="number" min="0" value={partForm.cost} onChange={(event) => setPartForm({ ...partForm, cost: event.target.value })} /><Button type="submit" className="gap-2"><Plus className="h-4 w-4" />Add</Button></form>{parts.length === 0 ? <p className="rounded-md border p-4 text-sm text-muted-foreground">No parts added yet.</p> : <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[760px] text-sm"><thead className="bg-muted"><tr><th className="px-3 py-2 text-left">Part Name</th><th className="px-3 py-2 text-right">Quantity</th><th className="px-3 py-2 text-right">Selling Price</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2 text-left">Warranty</th><th className="px-3 py-2 text-left">Added Date</th></tr></thead><tbody>{parts.map((part) => <tr key={part.id} className="border-t"><td className="px-3 py-2 font-medium">{part.name}</td><td className="px-3 py-2 text-right">{part.quantity}</td><td className="px-3 py-2 text-right">{money(part.cost)}</td><td className="px-3 py-2 text-right">{money(part.quantity * part.cost)}</td><td className="px-3 py-2">-</td><td className="px-3 py-2">{part.id.startsWith("PART-") ? new Date(Number(part.id.replace("PART-", ""))).toLocaleDateString() : "-"}</td></tr>)}</tbody></table></div>}</CardContent></Card></TabsContent>
+            <TabsContent value="timeline"><Card><CardHeader><CardTitle>Repair Timeline and Progress</CardTitle></CardHeader><CardContent><div className="mb-6 grid gap-2 md:grid-cols-4">{timeline.map((event, index) => { const eventProgress = getTimelineProgress(event); return <div key={`${event.date}-step-${index}`} className="rounded-md border p-3"><div className="mb-2 flex items-center justify-between gap-2"><span className="text-sm font-medium">{labelForStatus(event.status)}</span><span className="text-xs text-muted-foreground">{eventProgress}%</span></div><Progress value={eventProgress} className="h-2" /><p className="mt-2 text-xs text-muted-foreground">{new Date(event.date).toLocaleDateString()}</p></div>; })}</div><div className="space-y-6">{timeline.map((event, index) => <div key={`${event.date}-${index}`} className="flex gap-4"><div className="flex flex-col items-center"><div className="h-3 w-3 rounded-full bg-primary" />{index !== timeline.length - 1 && <div className="mt-2 h-full w-0.5 bg-border" />}</div><div className="flex-1 pb-6"><div className="mb-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-medium">{labelForStatus(event.status)}</p><p className="text-xs text-muted-foreground">Progress {getTimelineProgress(event)}%{event.technician ? ` | Technician: ${event.technician}` : ""}</p>{"changedByName" in event && (event.changedByName || event.changedByEmail) ? <p className="text-xs text-muted-foreground">Updated by {event.changedByName || "Staff"}{event.changedByEmail ? ` (${event.changedByEmail})` : ""}</p> : null}</div><p className="text-sm text-muted-foreground">{new Date(event.date).toLocaleString()}</p></div>{event.diagnosis && <p className="text-sm"><span className="font-medium">Diagnosis/work:</span> {event.diagnosis}</p>}{event.partsAdded && <p className="text-sm"><span className="font-medium">Parts added:</span> {event.partsAdded}</p>}<p className="text-sm text-muted-foreground">{event.note}</p></div></div>)}</div></CardContent></Card></TabsContent>
+            <TabsContent value="parts" className="space-y-4"><Card><CardHeader><CardTitle>Parts & Materials</CardTitle></CardHeader><CardContent className="space-y-4"><form onSubmit={addPart} className="grid gap-3 md:grid-cols-[135px_minmax(0,1.15fr)_110px_135px_auto]"><Input value={partForm.name} onChange={(event) => setPartForm({ ...partForm, name: event.target.value })} placeholder="Part name" /><Input type="number" min="0" value={partForm.cost} onChange={(event) => setPartForm({ ...partForm, cost: event.target.value })} placeholder="Part price" /><Input type="number" min="1" value={partForm.quantity} onChange={(event) => setPartForm({ ...partForm, quantity: event.target.value })} placeholder="Qty" /><div className="flex h-10 items-center rounded-md border px-3 text-sm font-medium">{money((Number(partForm.quantity) || 0) * (Number(partForm.cost) || 0))}</div><div className="flex gap-2">{editingPartId ? <Button type="button" variant="outline" onClick={resetPartForm}>Cancel</Button> : null}<Button type="submit" className="gap-2"><Plus className="h-4 w-4" />{editingPartId ? "Save" : "Add"}</Button></div></form>{parts.length === 0 ? <p className="rounded-md border p-4 text-sm text-muted-foreground">No parts added yet.</p> : <div className="overflow-x-auto rounded-md border"><table className="w-full min-w-[760px] text-sm"><thead className="bg-muted"><tr><th className="px-3 py-2 text-left">Part Name</th><th className="px-3 py-2 text-right">Part Price</th><th className="px-3 py-2 text-right">Quantity</th><th className="px-3 py-2 text-right">Total</th><th className="px-3 py-2 text-right">Actions</th></tr></thead><tbody>{parts.map((part) => <tr key={part.id} className="border-t"><td className="px-3 py-2 font-medium">{part.name}</td><td className="px-3 py-2 text-right">{money(part.cost)}</td><td className="px-3 py-2 text-right">{part.quantity}</td><td className="px-3 py-2 text-right">{money(part.quantity * part.cost)}</td><td className="px-3 py-2"><div className="flex justify-end gap-2"><Button type="button" variant="outline" size="icon" className="app-action-icon edit" title="Edit Part" onClick={() => startEditPart(part)}><Edit className="h-4 w-4" /></Button><Button type="button" variant="outline" size="icon" className="app-action-icon delete" title="Delete Part" onClick={() => deletePart(part)}><Trash2 className="h-4 w-4" /></Button></div></td></tr>)}</tbody></table></div>}</CardContent></Card></TabsContent>
           </Tabs>
         </div>
 

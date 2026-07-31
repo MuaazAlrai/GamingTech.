@@ -352,6 +352,7 @@ export function NewSale() {
         const deviceName = device.model.trim() ? `${device.deviceType} - ${device.model.trim()}` : device.deviceType;
         const paidForDevice = paymentAllocations[index] ?? 0;
         const now = new Date().toISOString();
+        const technicianName = device.technician.trim();
 
         return {
           id: existingRepair?.id || device.deviceNumber,
@@ -370,7 +371,7 @@ export function NewSale() {
           issueDescription: device.fault.trim(),
           status: device.repairStatus,
           priority: device.priority,
-          technician: device.technician,
+          technician: technicianName,
           createdAt: existingRepair?.createdAt || now,
           estimatedCompletion: new Date(`${device.estimatedCompletion}T12:00:00`).toISOString(),
           amount,
@@ -380,7 +381,7 @@ export function NewSale() {
           model: device.model.trim(),
           serialNumber: device.serialNumber.trim(),
           physicalDeviceId: `${device.brand || device.deviceType}-${device.model || device.deviceNumber}-${device.serialNumber || device.deviceNumber}`.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-          timeline: [{ date: now, status: device.repairStatus, note: `Device saved on invoice ${finalInvoiceNumber}.`, technician: device.technician }],
+          timeline: [{ date: now, status: device.repairStatus, note: `Device saved on invoice ${finalInvoiceNumber}.`, technician: technicianName || undefined }],
           statusHistory: existingRepair?.statusHistory ?? [],
           technicianAssignmentHistory: existingRepair?.technicianAssignmentHistory ?? [],
           partsUsed: existingRepair?.partsUsed ?? [],
@@ -592,7 +593,7 @@ export function NewSale() {
                 <Field label="Serial Number" action={activeDevice.serialNumber ? <ClearButton onClick={() => clearDeviceField("serialNumber", "")} /> : null}><Input className="h-11" value={activeDevice.serialNumber} onChange={(event) => updateDevice(activeDevice.localId, { serialNumber: event.target.value })} /></Field>
                 <Field label="Device Amount" action={activeDevice.amount ? <ClearButton onClick={() => clearDeviceField("amount", "")} /> : null}><Input className="h-11" type="number" min="0" value={activeDevice.amount} onChange={(event) => updateDevice(activeDevice.localId, { amount: event.target.value })} /></Field>
                 <Field label="Priority" action={activeDevice.priority !== "medium" ? <ClearButton onClick={() => clearDeviceField("priority", "medium" as NonNullable<PosSale["priority"]>)} /> : null}><Select value={activeDevice.priority} onValueChange={(value) => updateDevice(activeDevice.localId, { priority: value as NonNullable<PosSale["priority"]> })}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{["low", "medium", "high", "urgent"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent></Select></Field>
-                <Field label="Technician" action={activeDevice.technician ? <ClearButton onClick={() => clearDeviceField("technician", "")} /> : null}><Select value={activeDevice.technician || "unassigned"} onValueChange={(value) => updateDevice(activeDevice.localId, { technician: value === "unassigned" ? "" : value })}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="unassigned">Not Assigned</SelectItem>{technicians.map((item) => <SelectItem key={item.id} value={item.fullName}>{item.fullName}{item.designation ? ` - ${item.designation}` : ""}</SelectItem>)}</SelectContent></Select></Field>
+                <Field label="Technician (Optional)" action={activeDevice.technician ? <ClearButton onClick={() => clearDeviceField("technician", "")} /> : null}><Select value={activeDevice.technician || "unassigned"} onValueChange={(value) => updateDevice(activeDevice.localId, { technician: value === "unassigned" ? "" : value })}><SelectTrigger className="h-11"><SelectValue placeholder="Not Assigned" /></SelectTrigger><SelectContent><SelectItem value="unassigned">Not Assigned</SelectItem>{technicians.map((item) => <SelectItem key={item.id} value={item.fullName}>{item.fullName}{item.designation ? ` - ${item.designation}` : ""}</SelectItem>)}</SelectContent></Select></Field>
                 <Field label="Repair Status" action={activeDevice.repairStatus !== "received" ? <ClearButton onClick={() => clearDeviceField("repairStatus", "received")} /> : null}><Select value={activeDevice.repairStatus} onValueChange={(value) => updateDevice(activeDevice.localId, { repairStatus: value })}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{["received", "diagnosing", "waiting_approval", "waiting_parts", "repairing", "testing", "completed", "ready", "delivered"].map((status) => <SelectItem key={status} value={status}>{labelForRepairStatus(status)}</SelectItem>)}</SelectContent></Select></Field>
                 <Field label="Expected Completion" action={activeDevice.estimatedCompletion ? <ClearButton onClick={() => clearDeviceField("estimatedCompletion", defaultDueDate())} /> : null}><Input className="h-11" type="date" value={activeDevice.estimatedCompletion} onChange={(event) => updateDevice(activeDevice.localId, { estimatedCompletion: event.target.value })} /></Field>
               </div>

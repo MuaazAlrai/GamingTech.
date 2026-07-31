@@ -8,6 +8,7 @@ import type { Part } from "../../types/part";
 import type { PosSale } from "../../types/pos-sale";
 import type { RepairTicket } from "../../types/repair-ticket";
 import { formatAmount } from "../../utils/formatting";
+import { displayInvoiceNumber } from "../../utils/invoice-number";
 import { getRepairDueState, labelForRepairStatus } from "../../utils/repair-status";
 
 const money = (value: number) => formatAmount(value, 0);
@@ -106,7 +107,7 @@ export function Reports() {
 
         <Card>
           <CardHeader><CardTitle>Pending Payment Report</CardTitle></CardHeader>
-          <CardContent><ReportTable headers={["Invoice", "Customer", "Device", "Total", "Paid", "Remaining"]} rows={pendingRepairPayments.map(({ repair, total, paid }) => [repair.invoiceNumber || repair.id, repair.customer, repair.device, money(total), money(paid), money(total - paid)])} /></CardContent>
+          <CardContent><ReportTable headers={["Invoice", "Customer", "Device", "Total", "Paid", "Remaining"]} rows={pendingRepairPayments.map(({ repair, total, paid }) => [displayInvoiceNumber(repair.invoiceNumber, repair.ticketNumber, repair.id), repair.customer, repair.device, money(total), money(paid), money(total - paid)])} /></CardContent>
         </Card>
       </div>
     </div>

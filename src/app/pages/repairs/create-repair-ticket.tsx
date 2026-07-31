@@ -352,6 +352,10 @@ export function CreateRepairTicket() {
               <CardDescription>Review options before creating the ticket.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-lg border border-dashed bg-blue-50/70 p-4 text-sm">
+                <p className="font-semibold text-blue-900">Auto-generated on save</p>
+                <p className="mt-1 text-blue-800">Device number, serial number, and invoice number form submit karte hi system khud banata hai.</p>
+              </div>
               <div className="space-y-3 rounded-lg bg-muted/50 p-4 text-sm">
                 <div className="flex justify-between"><span className="text-muted-foreground">Customer</span><span className="font-semibold">{customerType === "existing" ? "Existing" : "New"}</span></div>
                 <div className="flex justify-between"><span className="text-muted-foreground">Status</span><span className="font-semibold">Received</span></div>

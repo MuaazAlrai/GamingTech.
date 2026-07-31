@@ -68,6 +68,9 @@ export type RepairStatusHistoryEntry = {
   note?: string;
   technician?: string;
   technicianId?: string;
+  changedByName?: string;
+  changedByEmail?: string;
+  changedByUid?: string;
   progress?: number;
 };
 

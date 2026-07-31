@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { Eye, Search, Package, TrendingUp, Pencil, Trash2 } from "lucide-react";
+import { Eye, Printer, Search, Package, TrendingUp, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { useAuth } from "../../auth/auth-context";
 import { DataPagination } from "../../components/shared/data-pagination";
 import { Badge } from "../../components/ui/badge";
@@ -17,6 +18,8 @@ import type { StockAdjustment } from "../../types/part";
 import type { PosSale } from "../../types/pos-sale";
 import type { RepairTicket } from "../../types/repair-ticket";
 import { formatAmount } from "../../utils/formatting";
+import { displayInvoiceNumber } from "../../utils/invoice-number";
+import { printInventoryItem } from "../../utils/print-inventory-item";
 import { buildRepairInventoryItems, type RepairInventoryItem } from "../../utils/repair-inventory";
 
 type InventoryItem = RepairInventoryItem & { id: string };
@@ -256,7 +259,7 @@ export function PartsInventory() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
-                placeholder="Search by item, device number, invoice number, or customer..."
+                placeholder="Search by item, device number, or customer..."
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 className="pl-10"
@@ -282,6 +285,7 @@ export function PartsInventory() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Invoice Number</TableHead>
                   <TableHead>Item Name</TableHead>
                   <TableHead>Device Number</TableHead>
                   <TableHead>Category</TableHead>
@@ -301,8 +305,16 @@ export function PartsInventory() {
                 ) : inventoryPagination.pagedItems.map((part) => {
                   return (
                     <TableRow key={part.id}>
+                      <TableCell className="min-w-[170px]">
+                        <Link
+                          className="font-medium text-primary hover:underline"
+                          to={`/inventory/${part.id}`}
+                        >
+                          {displayInvoiceNumber(part.invoiceNumber) || "-"}
+                        </Link>
+                      </TableCell>
                       <TableCell className="min-w-[220px] font-medium">{getInventoryDisplayName(part)}</TableCell>
-                      <TableCell className="min-w-[170px] text-muted-foreground">{part.sku}</TableCell>
+                      <TableCell className="min-w-[170px] text-muted-foreground">{part.sku || "-"}</TableCell>
                       <TableCell className="min-w-[160px]"><Badge variant="outline">{part.category}</Badge></TableCell>
                       <TableCell className="font-medium">{money(part.totalAmount ?? part.costPrice ?? 0)}</TableCell>
                       <TableCell className="text-success">{money(part.receivedAmount ?? part.sellingPrice ?? 0)}</TableCell>
@@ -312,6 +324,30 @@ export function PartsInventory() {
                           <Link to={`/inventory/${part.id}`}>
                             <Button variant="outline" size="icon" className="app-action-icon view" title="View Inventory Item"><Eye className="h-4 w-4" /></Button>
                           </Link>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="app-action-icon print"
+                            title="Print Invoice"
+                            onClick={() => {
+                              if (!printInventoryItem({
+                                id: part.id,
+                                invoiceNumber: displayInvoiceNumber(part.invoiceNumber),
+                                name: getInventoryDisplayName(part),
+                                sku: part.sku,
+                                category: part.category,
+                                supplier: part.supplier,
+                                customerPhone: part.customerPhone,
+                                totalAmount: part.totalAmount ?? part.costPrice ?? 0,
+                                receivedAmount: part.receivedAmount ?? part.sellingPrice ?? 0,
+                                pendingAmount: part.pendingAmount ?? 0,
+                              })) {
+                                toast.error("Unable to print this invoice.");
+                              }
+                            }}
+                          >
+                            <Printer className="h-4 w-4" />
+                          </Button>
                           {hasPermission("inventory.edit") && (
                             <Button variant="outline" size="icon" className="app-action-icon edit" title="Edit Inventory Item" onClick={() => part.source === "repair" && part.linkedRepairId ? navigate(`/repairs/${part.linkedRepairId}`) : openEditDialog(part)}>
                               <Pencil className="h-4 w-4" />

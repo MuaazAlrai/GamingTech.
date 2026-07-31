@@ -9,6 +9,7 @@ import type { CustomerPayment } from "../../types/customer";
 import type { PosSale } from "../../types/pos-sale";
 import type { RepairTicket } from "../../types/repair-ticket";
 import { formatAmount } from "../../utils/formatting";
+import { displayInvoiceNumber } from "../../utils/invoice-number";
 
 const money = (value: number) => formatAmount(value);
 
@@ -57,7 +58,7 @@ export function BillingDashboard() {
     const paid = Math.min(ticket.amount, extraPaid);
     const pending = Math.max(0, ticket.amount - paid);
     return {
-      id: ticket.invoiceNumber || ticket.ticketNumber || ticket.id,
+      id: displayInvoiceNumber(ticket.invoiceNumber, ticket.ticketNumber, ticket.id),
       date: ticket.createdAt,
       customer: ticket.customer,
       type: "Repair",

@@ -38,6 +38,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { useAuth } from "../../auth/auth-context";
+import { displayInvoiceNumber } from "../../utils/invoice-number";
 import { getRepairDueState, inactiveRepairStatuses, labelForRepairStatus, progressForRepairStatus, repairStatusOptions } from "../../utils/repair-status";
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
@@ -179,7 +180,7 @@ function useDebouncedValue<T>(value: T, delayMs: number) {
 }
 
 export function RepairTickets() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, user, appUser } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
   const [tickets, setTickets] = usePersistentState<RepairTicket[]>("gamingtech.repairTickets", []);
@@ -252,6 +253,9 @@ export function RepairTickets() {
     const statusLabel = labelForRepairStatus(statusForm.status);
     const notes = [statusForm.workCompleted, statusForm.customerNote, statusForm.internalNote].map((item) => item.trim()).filter(Boolean);
     const note = notes.join(" | ") || `Status changed to ${statusLabel}.`;
+    const changedByName = appUser?.fullName || user?.displayName || user?.email || "Staff";
+    const changedByEmail = user?.email || appUser?.email || "";
+    const changedByUid = user?.uid || appUser?.uid || "";
 
     setTickets((current) => current.map((ticket) => {
       if (ticket.id !== statusTicket.id) return ticket;
@@ -275,6 +279,9 @@ export function RepairTickets() {
           note: statusForm.customerNote.trim() || statusForm.internalNote.trim() || undefined,
           technician: ticket.technician,
           technicianId: ticket.currentTechnicianId,
+          changedByName,
+          changedByEmail: changedByEmail || undefined,
+          changedByUid: changedByUid || undefined,
           progress,
         }, ...(ticket.statusHistory ?? [])],
         repairNotes: [
@@ -291,6 +298,10 @@ export function RepairTickets() {
   const saveEdit = (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingTicket) return;
+    const changedAt = new Date().toISOString();
+    const changedByName = appUser?.fullName || user?.displayName || user?.email || "Staff";
+    const changedByEmail = user?.email || appUser?.email || "";
+    const changedByUid = user?.uid || appUser?.uid || "";
     setTickets((current) => current.map((ticket) => {
       if (ticket.id !== editingTicket.id) return ticket;
       const statusChanged = ticket.status !== editForm.status;
@@ -304,7 +315,17 @@ export function RepairTickets() {
         estimatedCompletion: editForm.estimatedCompletion,
         amount: Number(editForm.amount),
         statusHistory: statusChanged
-          ? [{ id: `STATUS-${Date.now()}`, date: new Date().toISOString(), status: editForm.status, label: labelForRepairStatus(editForm.status), note: "Status changed from repair list edit.", technician: ticket.technician }, ...(ticket.statusHistory ?? [])]
+          ? [{
+            id: `STATUS-${Date.now()}`,
+            date: changedAt,
+            status: editForm.status,
+            label: labelForRepairStatus(editForm.status),
+            note: "Status changed from repair list edit.",
+            technician: ticket.technician,
+            changedByName,
+            changedByEmail: changedByEmail || undefined,
+            changedByUid: changedByUid || undefined,
+          }, ...(ticket.statusHistory ?? [])]
           : ticket.statusHistory,
       };
     }));
@@ -535,8 +556,9 @@ export function RepairTickets() {
                     const status = statusConfig[ticket.status] ?? { label: labelForRepairStatus(ticket.status), variant: "outline" as const, icon: Clock };
                     const StatusIcon = status.icon;
                     const dueState = getRepairDueState(ticket);
-                    const invoiceNumber = ticket.invoiceNumber || ticket.ticketNumber || ticket.id;
+                    const invoiceNumber = displayInvoiceNumber(ticket.invoiceNumber, ticket.ticketNumber, ticket.id);
                     const deviceNumber = ticket.deviceNumber || ticket.ticketNumber || ticket.id;
+                    const latestStatusChangedBy = ticket.statusHistory?.[0]?.changedByName || ticket.statusHistory?.[0]?.changedByEmail || "";
                     const detailState = { repairSearch: searchParams.toString() };
                     const progress = repairProgress(ticket);
                     const paymentStatus = paymentStatusFor(ticket);
@@ -551,6 +573,7 @@ export function RepairTickets() {
                                 {status.label}
                               </Badge>
                             </button>
+                            {latestStatusChangedBy ? <p className="text-[11px] text-muted-foreground">By: {latestStatusChangedBy}</p> : null}
                           </div>
                         </TableCell>
                         <TableCell className="px-3 py-3">

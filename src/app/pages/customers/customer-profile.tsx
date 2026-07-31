@@ -18,11 +18,24 @@ import type { PosSale } from "../../types/pos-sale";
 import type { RepairTicket } from "../../types/repair-ticket";
 import type { CashShift } from "../../types/staff";
 import { formatAmount } from "../../utils/formatting";
+import { displayInvoiceNumber } from "../../utils/invoice-number";
 import { getRepairDueState, labelForRepairStatus } from "../../utils/repair-status";
 import { logStaffActivity } from "../../utils/staff-activity";
 
 const money = (value: number) => formatAmount(value);
 const normalizePhone = (value: string) => value.replace(/\D/g, "");
+const normalizeText = (value: string | undefined) => String(value ?? "").toLowerCase().trim();
+const safeDateValue = (value: string | undefined) => String(value ?? "");
+const safeDateLabel = (value: string | undefined) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
+};
+const safeDateOnlyLabel = (value: string | undefined) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString();
+};
 
 const repairGrandTotal = (repair: RepairTicket) => {
   if (repair.invoiceItems?.length) {
@@ -51,6 +64,60 @@ export function CustomerProfile() {
   const [paymentForm, setPaymentForm] = useState({ amount: "", method: "Cash", note: "" });
   const customer = customers.find((item) => item.id === id);
 
+  const normalizedCustomerName = normalizeText(customer?.name);
+  const normalizedCustomerPhone = normalizePhone(customer?.phone ?? "");
+
+  const customerSales = sales.filter((sale) => {
+    const salePhone = normalizePhone(String(sale.customerPhone ?? ""));
+    return (
+      (sale.customerId === customer?.id || salePhone === normalizedCustomerPhone || normalizeText(sale.customerName) === normalizedCustomerName) &&
+      (sale.status ?? "completed") === "completed"
+    );
+  });
+
+  const customerRepairs = repairs.filter((repair) => {
+    const repairPhone = normalizePhone(String(repair.customerPhone ?? ""));
+    return repair.customerId === customer?.id || repairPhone === normalizedCustomerPhone || normalizeText(repair.customer) === normalizedCustomerName;
+  });
+
+  const customerRepairInvoices = customerSales.filter((sale) => sale.invoiceType === "repair" || sale.repairId);
+  const customerPayments = payments.filter((payment) => payment.customerId === customer?.id);
+  const totalInvoicesAmount = customerSales.reduce((sum, sale) => sum + sale.total, 0);
+  const invoicePaid = customerSales.reduce((sum, sale) => sum + (sale.paidAmount ?? sale.total), 0);
+  const laterPaid = customerPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const totalPaid = invoicePaid + laterPaid;
+  const pendingBalance = Math.max(0, totalInvoicesAmount - totalPaid);
+  const openRepairs = customerRepairs.filter((repair) => !["completed", "ready", "delivered", "cancelled", "dead", "scrap"].includes(repair.status));
+  const history = [
+    ...customerSales.map((sale) => ({
+      id: sale.id,
+      date: safeDateValue(sale.date),
+      detail: `Invoice ${displayInvoiceNumber(sale.id)} - ${sale.deviceName || sale.deviceNumber || "Device"}`,
+      method: sale.paymentMethod,
+      debit: sale.total,
+      credit: sale.paidAmount ?? sale.total,
+    })),
+    ...customerPayments.map((payment) => ({
+      id: payment.id,
+      date: safeDateValue(payment.date),
+      detail: payment.note || "Khata payment",
+      method: payment.method,
+      debit: 0,
+      credit: payment.amount,
+    })),
+    ...customerRepairs.map((repair) => ({
+      id: `REPAIR-${repair.id}`,
+      date: safeDateValue(repair.createdAt),
+      detail: `Repair ${displayInvoiceNumber(repair.invoiceNumber, repair.ticketNumber, repair.id)} - ${labelForRepairStatus(repair.status)}`,
+      method: "Repair Status",
+      debit: 0,
+      credit: 0,
+    })),
+  ].sort((a, b) => safeDateValue(b.date).localeCompare(safeDateValue(a.date)));
+  const historyPagination = usePagination(history, 10);
+  const invoicePagination = usePagination(customerRepairInvoices, 10);
+  const repairPagination = usePagination(customerRepairs, 10);
+
   if (!customer) {
     return (
       <Card>
@@ -61,60 +128,6 @@ export function CustomerProfile() {
       </Card>
     );
   }
-
-  const normalizedCustomerName = customer.name.toLowerCase().trim();
-  const normalizedCustomerPhone = normalizePhone(customer.phone);
-
-  const customerSales = sales.filter((sale) => {
-    const salePhone = normalizePhone(String(sale.customerPhone ?? ""));
-    return (
-      (sale.customerId === customer.id || salePhone === normalizedCustomerPhone || sale.customerName?.toLowerCase().trim() === normalizedCustomerName) &&
-      (sale.status ?? "completed") === "completed"
-    );
-  });
-
-  const customerRepairs = repairs.filter((repair) => {
-    const repairPhone = normalizePhone(String(repair.customerPhone ?? ""));
-    return repair.customerId === customer.id || repairPhone === normalizedCustomerPhone || repair.customer.toLowerCase().trim() === normalizedCustomerName;
-  });
-
-  const customerRepairInvoices = customerSales.filter((sale) => sale.invoiceType === "repair" || sale.repairId);
-  const customerPayments = payments.filter((payment) => payment.customerId === customer.id);
-  const totalPurchases = customerSales.reduce((sum, sale) => sum + sale.total, 0);
-  const invoicePaid = customerSales.reduce((sum, sale) => sum + (sale.paidAmount ?? sale.total), 0);
-  const laterPaid = customerPayments.reduce((sum, payment) => sum + payment.amount, 0);
-  const totalPaid = invoicePaid + laterPaid;
-  const pendingBalance = Math.max(0, totalPurchases - totalPaid);
-  const openRepairs = customerRepairs.filter((repair) => !["completed", "ready", "delivered", "cancelled", "dead", "scrap"].includes(repair.status));
-  const history = [
-    ...customerSales.map((sale) => ({
-      id: sale.id,
-      date: sale.date,
-      detail: `Invoice ${sale.id} - ${sale.deviceName || sale.deviceNumber || "Device"}`,
-      method: sale.paymentMethod,
-      debit: sale.total,
-      credit: sale.paidAmount ?? sale.total,
-    })),
-    ...customerPayments.map((payment) => ({
-      id: payment.id,
-      date: payment.date,
-      detail: payment.note || "Khata payment",
-      method: payment.method,
-      debit: 0,
-      credit: payment.amount,
-    })),
-    ...customerRepairs.map((repair) => ({
-      id: `REPAIR-${repair.id}`,
-      date: repair.createdAt,
-      detail: `Repair ${repair.invoiceNumber || repair.ticketNumber || repair.id} - ${labelForRepairStatus(repair.status)}`,
-      method: "Repair Status",
-      debit: 0,
-      credit: 0,
-    })),
-  ].sort((a, b) => b.date.localeCompare(a.date));
-  const historyPagination = usePagination(history, 10);
-  const invoicePagination = usePagination(customerRepairInvoices, 10);
-  const repairPagination = usePagination(customerRepairs, 10);
 
   const recordPayment = (event: React.FormEvent) => {
     event.preventDefault();
@@ -147,7 +160,7 @@ export function CustomerProfile() {
         </Button>
         <div>
           <h1 className="text-3xl font-bold">Customer Ledger / Khata</h1>
-          <p className="mt-1 text-muted-foreground">Purchases, repair invoices, payments and pending balance</p>
+          <p className="mt-1 text-muted-foreground">Repair invoices, payments and pending balance</p>
         </div>
       </div>
 
@@ -157,12 +170,12 @@ export function CustomerProfile() {
             <h2 className="text-2xl font-bold">{customer.name}</h2>
             <div className="mt-3 space-y-2 text-sm">
               <p className="flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" />{customer.phone}</p>
-              <p className="flex items-center gap-2"><Calendar className="h-4 w-4 text-muted-foreground" />Joined {new Date(customer.createdAt ?? Date.now()).toLocaleDateString()}</p>
+              <p className="flex items-center gap-2"><Calendar className="h-4 w-4 text-muted-foreground" />Joined {safeDateOnlyLabel(customer.createdAt ?? new Date().toISOString())}</p>
             </div>
           </div>
           <div className="rounded-lg bg-muted p-4">
-            <p className="text-sm text-muted-foreground">Total Purchases</p>
-            <p className="text-2xl font-bold">{money(totalPurchases)}</p>
+            <p className="text-sm text-muted-foreground">Total Invoices</p>
+            <p className="text-2xl font-bold">{money(totalInvoicesAmount)}</p>
             <p className="mt-3 text-sm text-muted-foreground">Repair Invoices</p>
             <p className="text-xl font-semibold">{customerRepairInvoices.length}</p>
             <p className="mt-3 text-sm text-muted-foreground">Total Paid</p>
@@ -181,31 +194,31 @@ export function CustomerProfile() {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Payment & Purchase History</CardTitle></CardHeader>
+        <CardHeader><CardTitle>Payment & Repair History</CardTitle></CardHeader>
         <CardContent>
           <div className="rounded-md border">
-            <Table className="table-fixed">
+            <Table className="table-fixed min-w-[760px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[160px]">Date</TableHead>
-                  <TableHead>Details</TableHead>
-                  <TableHead className="w-[120px]">Method</TableHead>
-                  <TableHead className="text-right">Purchase</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
+                  <TableHead className="w-[170px] px-3">Date</TableHead>
+                  <TableHead className="min-w-[260px] px-3">Details</TableHead>
+                  <TableHead className="w-[130px] px-3">Method</TableHead>
+                  <TableHead className="w-[120px] px-3 text-right">Invoice</TableHead>
+                  <TableHead className="w-[120px] px-3 text-right">Paid</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {history.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No purchases or payments yet.</TableCell>
+                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">No repair invoices or payments yet.</TableCell>
                   </TableRow>
                 ) : historyPagination.pagedItems.map((row) => (
                   <TableRow key={row.id}>
-                    <TableCell className="truncate">{new Date(row.date).toLocaleString()}</TableCell>
-                    <TableCell className="font-medium">{row.detail}</TableCell>
-                    <TableCell>{row.method}</TableCell>
-                    <TableCell className="text-right">{row.debit ? money(row.debit) : "-"}</TableCell>
-                    <TableCell className="text-right text-success">{row.credit ? money(row.credit) : "-"}</TableCell>
+                    <TableCell className="px-3 align-top whitespace-nowrap">{safeDateLabel(row.date)}</TableCell>
+                    <TableCell className="px-3 align-top font-medium break-words leading-6">{row.detail}</TableCell>
+                    <TableCell className="px-3 align-top break-words">{row.method}</TableCell>
+                    <TableCell className="px-3 align-top text-right whitespace-nowrap">{row.debit ? money(row.debit) : "-"}</TableCell>
+                    <TableCell className="px-3 align-top text-right text-success whitespace-nowrap">{row.credit ? money(row.credit) : "-"}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -246,10 +259,10 @@ export function CustomerProfile() {
                   </TableRow>
                 ) : invoicePagination.pagedItems.map((invoice) => (
                   <TableRow key={invoice.id}>
-                    <TableCell className="font-medium">{invoice.id}</TableCell>
+                    <TableCell className="font-medium">{displayInvoiceNumber(invoice.id)}</TableCell>
                     <TableCell className="truncate">{invoice.deviceName || invoice.deviceNumber || "-"}</TableCell>
                     <TableCell>{labelForRepairStatus(invoice.repairStatus || "received")}</TableCell>
-                    <TableCell>{new Date(invoice.date).toLocaleDateString()}</TableCell>
+                    <TableCell>{safeDateOnlyLabel(invoice.date)}</TableCell>
                     <TableCell className="text-right">{money(invoice.total)}</TableCell>
                     <TableCell className="hidden text-right sm:table-cell">{money(invoice.paidAmount ?? 0)}</TableCell>
                     <TableCell className="hidden text-right sm:table-cell">{money(Math.max(0, invoice.pendingBalance ?? invoice.total - (invoice.paidAmount ?? 0)))}</TableCell>
@@ -274,19 +287,19 @@ export function CustomerProfile() {
         <CardHeader><CardTitle>Customer Repair Records</CardTitle></CardHeader>
         <CardContent>
           <div className="rounded-md border">
-            <Table className="table-fixed">
+            <Table className="table-fixed min-w-[1080px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[140px]">Invoice Number</TableHead>
-                  <TableHead>Device Name</TableHead>
-                  <TableHead className="hidden lg:table-cell">Problem</TableHead>
-                  <TableHead className="hidden xl:table-cell">Technician</TableHead>
-                  <TableHead className="w-[130px]">Current Status</TableHead>
-                  <TableHead className="hidden md:table-cell">Received Date</TableHead>
-                  <TableHead className="hidden lg:table-cell">Expected Return Date</TableHead>
-                  <TableHead className="hidden md:table-cell">Due</TableHead>
-                  <TableHead className="text-right">Grand Total</TableHead>
-                  <TableHead className="hidden text-right sm:table-cell">Remaining Balance</TableHead>
+                  <TableHead className="w-[150px] px-3">Invoice Number</TableHead>
+                  <TableHead className="min-w-[200px] px-3">Device Name</TableHead>
+                  <TableHead className="hidden px-3 lg:table-cell min-w-[260px]">Problem</TableHead>
+                  <TableHead className="hidden px-3 xl:table-cell w-[150px]">Technician</TableHead>
+                  <TableHead className="w-[150px] px-3">Current Status</TableHead>
+                  <TableHead className="hidden px-3 md:table-cell w-[120px]">Received Date</TableHead>
+                  <TableHead className="hidden px-3 lg:table-cell w-[140px]">Expected Return Date</TableHead>
+                  <TableHead className="hidden px-3 md:table-cell w-[110px]">Due</TableHead>
+                  <TableHead className="w-[120px] px-3 text-right">Grand Total</TableHead>
+                  <TableHead className="hidden w-[140px] px-3 text-right sm:table-cell">Remaining Balance</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -300,20 +313,20 @@ export function CustomerProfile() {
                   const dueState = getRepairDueState(repair);
                   return (
                     <TableRow key={repair.id} className="cursor-pointer" onClick={() => navigate(`/repairs/${repair.id}`)}>
-                      <TableCell>
+                      <TableCell className="px-3 align-top">
                         <Link className="font-medium text-primary hover:underline" to={`/repairs/${repair.id}`} onClick={(event) => event.stopPropagation()}>
-                          {repair.invoiceNumber || repair.ticketNumber || repair.id}
+                          {displayInvoiceNumber(repair.invoiceNumber, repair.ticketNumber, repair.id)}
                         </Link>
                       </TableCell>
-                      <TableCell className="truncate">{repair.device}</TableCell>
-                      <TableCell className="hidden max-w-[240px] truncate lg:table-cell">{repair.issueDescription || repair.issue}</TableCell>
-                      <TableCell className="hidden xl:table-cell">{repair.technician || "Unassigned"}</TableCell>
-                      <TableCell>{labelForRepairStatus(repair.status)}</TableCell>
-                      <TableCell className="hidden md:table-cell">{repair.createdAt ? new Date(repair.createdAt).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell className="hidden lg:table-cell">{repair.estimatedCompletion ? new Date(repair.estimatedCompletion).toLocaleDateString() : "-"}</TableCell>
-                      <TableCell className="hidden md:table-cell">{dueState.label}</TableCell>
-                      <TableCell className="text-right">{money(grandTotal)}</TableCell>
-                      <TableCell className="hidden text-right sm:table-cell">{remaining ? money(remaining) : "-"}</TableCell>
+                      <TableCell className="px-3 align-top break-words leading-6">{repair.device}</TableCell>
+                      <TableCell className="hidden px-3 align-top break-words leading-6 lg:table-cell">{repair.issueDescription || repair.issue}</TableCell>
+                      <TableCell className="hidden px-3 align-top break-words xl:table-cell">{repair.technician || "Unassigned"}</TableCell>
+                      <TableCell className="px-3 align-top break-words">{labelForRepairStatus(repair.status)}</TableCell>
+                      <TableCell className="hidden px-3 align-top whitespace-nowrap md:table-cell">{safeDateOnlyLabel(repair.createdAt)}</TableCell>
+                      <TableCell className="hidden px-3 align-top whitespace-nowrap lg:table-cell">{safeDateOnlyLabel(repair.estimatedCompletion)}</TableCell>
+                      <TableCell className="hidden px-3 align-top break-words md:table-cell">{dueState.label}</TableCell>
+                      <TableCell className="px-3 align-top text-right whitespace-nowrap">{money(grandTotal)}</TableCell>
+                      <TableCell className="hidden px-3 align-top text-right whitespace-nowrap sm:table-cell">{remaining ? money(remaining) : "-"}</TableCell>
                     </TableRow>
                   );
                 })}

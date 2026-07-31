@@ -36,6 +36,7 @@ import type { GpuItem } from "../types/gpu-item";
 import type { PosSale } from "../types/pos-sale";
 import type { RepairTicket } from "../types/repair-ticket";
 import { useAuth } from "../auth/auth-context";
+import { displayInvoiceNumber } from "../utils/invoice-number";
 import { getRepairDueState, labelForRepairStatus } from "../utils/repair-status";
 
 type Customer = {
@@ -340,7 +341,7 @@ export function Dashboard() {
                 <Link key={id} to={`/repairs/${ticket.id}`} className="grid gap-3 rounded-md border p-3 transition-colors hover:bg-accent/40 md:grid-cols-[180px_1fr_150px_150px]">
                   <div>
                     <Badge variant="outline" className={notificationToneClasses[due.tone]}>{reason}</Badge>
-                    <p className="mt-2 text-sm font-semibold">{ticket.ticketNumber || ticket.id}</p>
+                    <p className="mt-2 text-sm font-semibold">{displayInvoiceNumber(ticket.invoiceNumber, ticket.ticketNumber, ticket.id)}</p>
                   </div>
                   <div className="min-w-0">
                     <p className="font-medium">{ticket.customer}</p>

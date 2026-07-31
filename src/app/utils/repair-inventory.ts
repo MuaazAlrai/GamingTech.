@@ -1,5 +1,6 @@
 import type { PosSale } from "../types/pos-sale";
 import type { RepairTicket } from "../types/repair-ticket";
+import { displayInvoiceNumber } from "./invoice-number";
 import { labelForRepairStatus, progressForRepairStatus } from "./repair-status";
 
 export type RepairInventoryItem = {
@@ -58,13 +59,13 @@ export function buildRepairInventoryItems(repairs: RepairTicket[], invoices: Pos
       costPrice: moneyValue(repair, linkedInvoice),
       sellingPrice: moneyValue(repair, linkedInvoice),
       supplier: repair.customer || linkedInvoice?.customerName || "Customer",
-      location: repair.invoiceNumber || linkedInvoice?.id || "Pending Invoice",
+      location: displayInvoiceNumber(repair.invoiceNumber, linkedInvoice?.id) || "Pending Invoice",
       status: labelForRepairStatus(repair.status),
       progress: repair.statusHistory?.[0]?.progress ?? repair.timeline?.[0]?.progress ?? progressForRepairStatus(repair.status),
       totalAmount,
       receivedAmount,
       pendingAmount,
-      invoiceNumber: repair.invoiceNumber || linkedInvoice?.id,
+      invoiceNumber: displayInvoiceNumber(repair.invoiceNumber, linkedInvoice?.id),
       customerPhone: repair.customerPhone || linkedInvoice?.customerPhone,
       brand: repair.brand || linkedInvoice?.deviceBrand,
       model: repair.model || linkedInvoice?.deviceModel,
